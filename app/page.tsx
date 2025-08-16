@@ -87,7 +87,9 @@ export default function Home() {
           {/* Enhanced CTA buttons */}
           <div className="animate-fade-in-up stagger-2 flex gap-6 justify-center flex-wrap mb-12">
             <button className="group relative overflow-hidden bg-[var(--color-primary)] text-white px-8 py-4 rounded-2xl font-bold text-base hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--color-primary)]/30">
-              <span className="relative z-10">Start Splitting Bills</span>
+              <a href="/signup" className="relative z-10 block w-full h-full">
+                Start Splitting Bills
+              </a>
               <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/80 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
             </button>
             <button className="group relative overflow-hidden bg-transparent text-[var(--color-text-primary)] border-2 border-[var(--color-border)] hover:border-[var(--color-primary)] px-8 py-4 rounded-2xl font-bold text-base hover:scale-105 transition-all duration-300 hover:shadow-xl hover:shadow-[var(--color-primary)]/20">
@@ -350,7 +352,9 @@ export default function Home() {
 
           <div className="animate-fade-in-up stagger-2 flex gap-6 justify-center flex-wrap">
             <button className="group relative overflow-hidden bg-white text-[var(--color-primary)] hover:bg-gray-50 hover:shadow-2xl transition-all duration-300 px-10 py-4 rounded-2xl font-bold text-lg hover:scale-105 transform">
-              <span className="relative z-10">Launch AnyPay</span>
+              <a href="/signup" className="relative z-10 block w-full h-full">
+                Launch AnyPay
+              </a>
               <div className="absolute inset-0 bg-gradient-to-r from-gray-50 to-white opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
             </button>
             <button className="group relative overflow-hidden bg-transparent text-white border-2 border-white hover:bg-white hover:text-[var(--color-primary)] hover:shadow-2xl transition-all duration-300 px-10 py-4 rounded-2xl font-bold text-lg hover:scale-105 transform">
