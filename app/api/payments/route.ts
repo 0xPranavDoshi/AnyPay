@@ -22,7 +22,7 @@ async function getPaymentsForUser(userAddress: string): Promise<Payment[]> {
   }).sort({ createdAt: -1 }).toArray();
 
   await client.close();
-  return payments as Payment[];
+  return payments as unknown as Payment[];
 }
 
 async function updatePaymentWithCrossChain(paymentId: string, crossChainData: any): Promise<void> {
@@ -32,9 +32,15 @@ async function updatePaymentWithCrossChain(paymentId: string, crossChainData: an
   const collection = db.collection("payments");
 
   // Convert string ID to ObjectId if needed
-  const query = typeof paymentId === 'string' && paymentId.length === 24 
-    ? { _id: paymentId }
-    : { _id: paymentId };
+  let query: any;
+  try {
+    const { ObjectId } = require('mongodb');
+    query = typeof paymentId === 'string' && paymentId.length === 24 
+      ? { _id: new ObjectId(paymentId) }
+      : { _id: paymentId };
+  } catch (error) {
+    query = { _id: paymentId };
+  }
 
   await collection.updateOne(
     query,
@@ -72,10 +78,17 @@ export async function GET(req: NextRequest) {
       // Transform payments to dashboard format
       const dashboardData = {
         youOwe: [] as any[],
-        owedToYou: [] as any[]
+        owedToYou: [] as any[],
+        paidPayments: [] as any[]
       };
 
       userPayments.forEach(payment => {
+        // Check if payment has been completed (has successful cross-chain transactions)
+        const hasCompletedTransaction = payment.crossChainPayments && 
+          payment.crossChainPayments.some((ccip: any) => 
+            ccip.status === "COMPLETED" && ccip.txHash
+          );
+
         // Handle new payment format (payer/owers)
         if ('payer' in payment && 'owers' in payment) {
           const owersArray = Array.isArray(payment.owers) ? payment.owers : [];
@@ -86,13 +99,35 @@ export async function GET(req: NextRequest) {
           );
           
           if (userOwes) {
-            dashboardData.youOwe.push({
-              paymentId: payment._id,
-              user: payment.payer,
-              amount: userOwes.amount,
-              description: payment.description || "Payment",
-              crossChainPayments: payment.crossChainPayments || []
-            });
+            // If payment is completed, add to paidPayments, otherwise to youOwe
+            if (hasCompletedTransaction && payment.crossChainPayments) {
+              const completedTx = payment.crossChainPayments.find((ccip: any) => 
+                ccip.status === "COMPLETED" && ccip.txHash
+              );
+              
+              if (completedTx) {
+                dashboardData.paidPayments.push({
+                  paymentId: payment._id,
+                  recipientUser: payment.payer,
+                  amount: userOwes.amount,
+                  description: payment.description || "Payment",
+                  txHash: completedTx.txHash,
+                  messageId: completedTx.messageId,
+                  sourceChain: completedTx.sourceChain,
+                  destinationChain: completedTx.destinationChain,
+                  tokenType: completedTx.tokenType || 0,
+                  paidAt: completedTx.timestamp || payment.updatedAt || new Date()
+                });
+              }
+            } else {
+              dashboardData.youOwe.push({
+                paymentId: payment._id,
+                user: payment.payer,
+                amount: userOwes.amount,
+                description: payment.description || "Payment",
+                crossChainPayments: payment.crossChainPayments || []
+              });
+            }
           }
           
           // Check if user is owed money (user is the payer)

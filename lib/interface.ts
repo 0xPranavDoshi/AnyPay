@@ -29,6 +29,7 @@ export interface CrossChainPayment {
   status: PaymentStatus;
   messageId?: string;
   txHash?: string;
+  timestamp?: Date;
   createdAt: Date;
   updatedAt: Date;
 }

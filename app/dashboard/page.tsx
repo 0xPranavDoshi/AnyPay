@@ -47,7 +47,7 @@ export default function Dashboard() {
   const [image, setImage] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
-  const [activeTab, setActiveTab] = useState<"owe" | "owed">("owe");
+  const [activeTab, setActiveTab] = useState<"owe" | "owed" | "paid">("owe");
   const [user, setUser] = useState<User | null>(null);
   const [crossChainPayments, setCrossChainPayments] = useState<
     CrossChainPayment[]
@@ -72,6 +72,7 @@ export default function Dashboard() {
   // Payment data state
   const [youOwe, setYouOwe] = useState<any[]>([]);
   const [owedToYou, setOwedToYou] = useState<any[]>([]);
+  const [paidPayments, setPaidPayments] = useState<any[]>([]);
 
   // Mention system state
   const [usersSelected, setUsersSelected] = useState<User[]>([]);
@@ -113,6 +114,7 @@ export default function Dashboard() {
         const data = await response.json();
         setYouOwe(data.youOwe || []);
         setOwedToYou(data.owedToYou || []);
+        setPaidPayments(data.paidPayments || []);
         setCrossChainPayments(data.crossChainPayments || []);
       }
     } catch (error) {
@@ -132,6 +134,7 @@ export default function Dashboard() {
     setCrossChainPayments([]);
     setYouOwe([]);
     setOwedToYou([]);
+    setPaidPayments([]);
     setUsersSelected([]);
 
     // Redirect to home page
@@ -804,38 +807,124 @@ export default function Dashboard() {
               >
                 Owed To You
               </button>
+              <button
+                onClick={() => setActiveTab("paid")}
+                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                  activeTab === "paid"
+                    ? "bg-gradient-to-r from-blue-100 to-cyan-200 text-blue-700 shadow-sm shadow-blue-100/20 border-0"
+                    : "bg-gradient-to-r from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-gradient-to-r hover:from-blue-50/20 hover:to-blue-100/20 hover:border-blue-100/40 hover:text-blue-600"
+                }`}
+              >
+                Paid
+              </button>
             </div>
 
             {/* Tab Content */}
             <div className="flex-1 bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-4 overflow-y-auto">
-              {activeTab === "owe" ? (
-                // You Owe Section
+              {activeTab === "paid" ? (
+                // Paid Payments Section
                 <div>
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="w-12 h-12 bg-gradient-to-br from-red-50/30 to-red-100/20 rounded-xl flex items-center justify-center">
-                      <svg
-                        className="w-7 h-7 text-red-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        />
-                      </svg>
+
+                  {paymentsLoading ? (
+                    <div className="text-center py-8 text-[var(--color-text-muted)]">
+                      <div className="text-4xl mb-2">⏳</div>
+                      <p>Loading your payments...</p>
                     </div>
-                    <div>
-                      <h2 className="text-2xl font-bold text-[var(--color-text-primary)]">
-                        You Owe
-                      </h2>
+                  ) : paidPayments.length === 0 ? (
+                    <div className="text-center py-12 text-[var(--color-text-muted)]">
+                      <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span className="text-4xl">📜</span>
+                      </div>
+                      <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
+                        No Payment History
+                      </h3>
                       <p className="text-[var(--color-text-muted)]">
-                        People you need to pay back
+                        Your completed transactions will appear here
                       </p>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {paidPayments.map((item, index) => (
+                        <div
+                          key={index}
+                          className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 hover:border-blue-100/50 transition-all duration-200"
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div>
+                              <p className="font-semibold text-[var(--color-text-primary)]">
+                                Paid to {item.recipientUser?.username || 'Unknown'}
+                              </p>
+                              <p className="text-sm text-[var(--color-text-muted)] font-mono">
+                                {item.recipientUser?.walletAddress || item.recipient}
+                              </p>
+                              {item.description && (
+                                <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                                  {item.description}
+                                </p>
+                              )}
+                              <p className="text-xs text-blue-500 mt-1">
+                                ✅ Completed on {new Date(item.paidAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xl font-bold text-blue-500">
+                                ${item.amount.toFixed(2)}
+                              </p>
+                              <p className="text-xs text-[var(--color-text-muted)]">
+                                via {item.tokenType === 0 ? 'USDC' : item.tokenType === 1 ? 'CCIP-BnM' : 'CCIP-LnM'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Transaction Details */}
+                          <div className="p-3 bg-blue-900/10 rounded-lg border border-blue-500/20">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-sm text-blue-600 font-medium">Transaction Hash:</span>
+                              {item.txHash && (
+                                <a
+                                  href={`${
+                                    CHAINS[item.sourceChain as keyof typeof CHAINS]?.explorerUrl || "#"
+                                  }${item.txHash}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-500 hover:text-blue-300 text-sm underline"
+                                >
+                                  View Transaction →
+                                </a>
+                              )}
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4 text-xs text-[var(--color-text-muted)]">
+                              <div>
+                                <span className="font-medium">From:</span> {CHAINS[item.sourceChain as keyof typeof CHAINS]?.name || item.sourceChain}
+                              </div>
+                              <div>
+                                <span className="font-medium">To:</span> {CHAINS[item.destinationChain as keyof typeof CHAINS]?.name || item.destinationChain}
+                              </div>
+                            </div>
+
+                            {/* CCIP Tracking */}
+                            {item.messageId && item.messageId !== "pending" && item.messageId !== "direct-transfer" && (
+                              <div className="mt-2">
+                                <a
+                                  href={`https://ccip.chain.link/msg/${item.messageId}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-500 hover:text-blue-300 text-sm underline"
+                                >
+                                  🔗 Track CCIP Message →
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : activeTab === "owe" ? (
+                // You Owe Section
+                <div>
 
                   {paymentsLoading ? (
                     <div className="text-center py-8 text-[var(--color-text-muted)]">
@@ -946,6 +1035,114 @@ export default function Dashboard() {
                           >
                             💳 Pay ${item.amount.toFixed(2)} Cross-Chain
                           </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : activeTab === "owed" ? (
+                // Owed To You Section
+                <div>
+
+                  {paymentsLoading ? (
+                    <div className="text-center py-8 text-[var(--color-text-muted)]">
+                      <div className="text-4xl mb-2">⏳</div>
+                      <p>Loading your payments...</p>
+                    </div>
+                  ) : owedToYou.length === 0 ? (
+                    <div className="text-center py-12 text-[var(--color-text-muted)]">
+                      <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span className="text-4xl">📋</span>
+                      </div>
+                      <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
+                        All Settled Up!
+                      </h3>
+                      <p className="text-[var(--color-text-muted)]">
+                        No pending payments owed to you
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {owedToYou.map((item, index) => (
+                        <div
+                          key={index}
+                          className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 hover:border-green-100/50 transition-all duration-200"
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div>
+                              <p className="font-semibold text-[var(--color-text-primary)]">
+                                {item.user.username}
+                              </p>
+                              <p className="text-sm text-[var(--color-text-muted)] font-mono">
+                                {item.user.walletAddress}
+                              </p>
+                              {item.description && (
+                                <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                                  {item.description}
+                                </p>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xl font-bold text-green-400">
+                                ${item.amount.toFixed(2)}
+                              </p>
+                              <p className="text-xs text-[var(--color-text-muted)]">
+                                Pending
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Cross-chain payment tracking */}
+                          {item.crossChainPayments &&
+                            item.crossChainPayments.length > 0 && (
+                              <div className="p-2 bg-green-900/20 rounded-lg border border-green-500/30">
+                                <p className="text-xs text-green-300 mb-1">
+                                  🔗 CCIP Transactions:
+                                </p>
+                                {item.crossChainPayments.map(
+                                  (ccipTx: any, ccipIndex: number) => (
+                                    <div
+                                      key={ccipIndex}
+                                      className="text-xs text-green-200 space-y-1"
+                                    >
+                                      <div className="flex justify-between items-center">
+                                        <span>
+                                          {ccipTx.status || "Processing"}
+                                        </span>
+                                        {ccipTx.txHash && (
+                                          <a
+                                            href={`${
+                                              CHAINS[
+                                                ccipTx.sourceChain as keyof typeof CHAINS
+                                              ]?.explorerUrl || "#"
+                                            }${ccipTx.txHash}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-green-300 hover:text-green-100 underline"
+                                          >
+                                            View Tx
+                                          </a>
+                                        )}
+                                      </div>
+                                      {ccipTx.messageId &&
+                                        ccipTx.messageId !== "pending" && (
+                                          <div className="flex justify-between items-center">
+                                            <span>CCIP Message:</span>
+                                            <a
+                                              href={`https://ccip.chain.link/msg/${ccipTx.messageId}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="text-green-300 hover:text-green-100 underline"
+                                            >
+                                              Track CCIP
+                                            </a>
+                                          </div>
+                                        )}
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            )}
                         </div>
                       ))}
                     </div>
