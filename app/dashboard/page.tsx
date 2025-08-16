@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { getCookie } from "@/utils/cookie";
 
 interface User {
   username: string;
@@ -28,7 +29,21 @@ export default function Dashboard() {
   const [image, setImage] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"owe" | "owed">("owe");
+  const [user, setUser] = useState<User | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Get user from cookies on component mount
+  useEffect(() => {
+    const userCookie = getCookie("user");
+    if (userCookie) {
+      try {
+        const userData = JSON.parse(userCookie);
+        setUser(userData);
+      } catch (error) {
+        console.error("Error parsing user cookie:", error);
+      }
+    }
+  }, []);
 
   // Mock data - replace with actual data from your API
   const youOwe = [
@@ -101,36 +116,12 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
-      {/* Enhanced Dynamic Background Elements */}
+      {/* Floating Background Elements */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        {/* Floating geometric shapes */}
-        <div className="absolute top-20 left-10 w-16 h-16 border border-[var(--color-primary)]/20 rounded-lg rotate-45 animate-pulse"></div>
-        <div className="absolute top-32 right-20 w-8 h-8 bg-[var(--color-primary)]/10 rounded-full animate-pulse delay-1000"></div>
-        <div className="absolute top-40 left-1/3 w-12 h-12 border border-[var(--color-primary)]/15 rounded-full animate-pulse delay-2000"></div>
-        <div className="absolute top-24 right-1/4 w-10 h-10 border border-[var(--color-primary)]/25 rounded-lg rotate-12 animate-pulse delay-1500"></div>
-        <div className="absolute top-48 left-1/5 w-6 h-6 bg-[var(--color-primary)]/15 rounded-full animate-pulse delay-3000"></div>
-
-        {/* Gradient orbs */}
-        <div className="absolute bottom-40 right-10 w-24 h-24 bg-gradient-to-br from-[var(--color-primary)]/20 to-transparent rounded-full blur-xl animate-pulse delay-1500"></div>
-        <div className="absolute bottom-20 left-1/4 w-20 h-20 bg-gradient-to-br from-[var(--color-primary)]/15 to-transparent rounded-full blur-xl animate-pulse delay-500"></div>
-        <div className="absolute bottom-32 right-1/3 w-16 h-16 bg-gradient-to-br from-[var(--color-primary)]/10 to-transparent rounded-full blur-xl animate-pulse delay-2500"></div>
-        <div className="absolute bottom-48 left-1/2 w-12 h-12 bg-gradient-to-br from-[var(--color-primary)]/20 to-transparent rounded-full blur-xl animate-pulse delay-1000"></div>
-
-        {/* Network connection lines */}
-        <div className="absolute top-1/4 left-1/2 w-px h-32 bg-gradient-to-b from-transparent via-[var(--color-primary)]/20 to-transparent"></div>
-        <div className="absolute top-1/3 right-1/3 w-24 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/20 to-transparent"></div>
-        <div className="absolute top-1/2 left-1/4 w-16 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/15 to-transparent"></div>
-        <div className="absolute top-2/3 right-1/4 w-px h-20 bg-gradient-to-b from-transparent via-[var(--color-primary)]/15 to-transparent"></div>
-
-        {/* Floating dots with different sizes */}
-        <div className="absolute top-16 left-1/2 w-2 h-2 bg-[var(--color-primary)]/30 rounded-full animate-pulse delay-500"></div>
-        <div className="absolute top-28 right-16 w-1.5 h-1.5 bg-[var(--color-primary)]/25 rounded-full animate-pulse delay-2000"></div>
-        <div className="absolute top-36 left-16 w-1 h-1 bg-[var(--color-primary)]/20 rounded-full animate-pulse delay-3500"></div>
-        <div className="absolute top-52 right-1/2 w-2.5 h-2.5 bg-[var(--color-primary)]/35 rounded-full animate-pulse delay-1000"></div>
-
-        {/* Diagonal lines */}
-        <div className="absolute top-20 left-1/3 w-20 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/15 to-transparent transform rotate-45 origin-left"></div>
-        <div className="absolute top-32 right-1/4 w-16 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/15 to-transparent transform -rotate-45 origin-right"></div>
+        <div className="absolute top-20 left-10 w-32 h-32 bg-gradient-to-br from-[var(--color-primary)]/5 to-transparent rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute top-40 right-20 w-24 h-24 bg-gradient-to-br from-[var(--color-primary)]/8 to-transparent rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute bottom-32 left-1/3 w-28 h-28 bg-gradient-to-br from-[var(--color-primary)]/6 to-transparent rounded-full blur-3xl animate-pulse delay-2000"></div>
+        <div className="absolute top-1/2 right-1/4 w-20 h-20 bg-gradient-to-br from-[var(--color-primary)]/4 to-transparent rounded-full blur-3xl animate-pulse delay-1500"></div>
       </div>
 
       {/* Header */}
@@ -144,7 +135,7 @@ export default function Dashboard() {
             <div className="text-[var(--color-text-secondary)]">
               Welcome back,{" "}
               <span className="text-[var(--color-primary)] font-semibold">
-                User
+                {user ? user.username : "User"}
               </span>
             </div>
           </div>
@@ -156,6 +147,11 @@ export default function Dashboard() {
                 Connected
               </span>
             </div>
+            {user && (
+              <div className="text-sm text-[var(--color-text-muted)] font-mono bg-[var(--color-bg-card)] px-4 py-2 rounded-xl border border-[var(--color-border)]">
+                {user.walletAddress}
+              </div>
+            )}
             <button className="bg-[var(--color-primary)] text-white px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200">
               Disconnect
             </button>

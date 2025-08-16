@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useState } from "react";
+import { setCookie } from "@/utils/cookie";
 
 // Extend Window interface to include ethereum
 declare global {
@@ -91,9 +92,11 @@ export default function SignUp() {
         throw new Error(data.error || "Signup failed");
       }
 
-      setSuccess("Account created successfully! Redirecting...");
+      // Signup successful - store user in cookie and redirect
+      setCookie("user", JSON.stringify(data.user));
+      setSuccess("Account created successfully! Redirecting to dashboard...");
 
-      // Redirect to login page after a short delay
+      // Redirect to dashboard after a short delay
       setTimeout(() => {
         window.location.href = "/dashboard";
       }, 2000);
