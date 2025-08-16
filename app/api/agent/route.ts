@@ -10,7 +10,7 @@ import { callGemini } from "../../../lib/gemini";
 import { Payment, User } from "../../../lib/interface";
 import { MongoClient } from "mongodb";
 import { storeImage, storeImageFromUrl } from "../../../lib/pinata";
-import { getCookie } from "@/utils/cookie";
+import { getCookie } from "@/utils/cookie-server";
 
 // Bill splitting conversation states
 type ConversationState =
@@ -29,7 +29,7 @@ interface BillSplittingData {
   payer?: User;
   splitMethod?: "equal" | "itemwise" | "ratio" | "custom";
   splitDetails?: any;
-  settlement?: Payment;
+  settlement?: Payment[];
 }
 
 // Get bill splitting conversation prompts
@@ -39,15 +39,16 @@ function getBillSplittingPrompt(
   userPrompt: string
 ): string {
   const systemPrompts = {
-    INITIAL: `You are AnyPay, an AI assistant specialized in analyzing receipts and bills to help people split expenses fairly.
+    INITIAL: `You are AnyPay, an AI assistant specialized in understanding receipts and bills from images or text to help people split expenses.
 
-The user has uploaded a receipt/bill image. Your task is to:
-1. Carefully analyze the receipt and extract the total amount (look for "Total", "Amount Due", etc.)
-2. Identify individual items and their prices if visible
-3. Provide a clear summary of what you found
-4. Ask how many people are splitting this bill
+If the user provided an image URL, analyze it for the bill total (look for "Total", "Amount Due", etc.) and any itemization. If the user provided only text (e.g., "hey we want to split a $52 bill"), extract the total from the text.
 
-Be friendly, concise, and focus on the bill splitting task. Start by clearly stating the total amount you found and then ask for the number of people splitting.`,
+Your goals:
+1. Extract the total amount reliably from image or text
+2. Provide a concise summary of the amount you found
+3. Ask how many people are splitting this bill
+
+Be friendly, concise, and stay focused on bill splitting. Start by clearly stating the total amount you identified, then ask for the number of people splitting.`,
 
     WAITING_FOR_PEOPLE_COUNT: `Continue helping with bill splitting. The user needs to tell you how many people are splitting the bill. Ask clearly for this information if they haven't provided it yet.`,
 
@@ -71,8 +72,8 @@ Explain each option briefly and ask them to choose.`,
   return systemPrompts[state] || systemPrompts.INITIAL;
 }
 
-// Save payment to MongoDB
-async function savePayment(payment: Payment): Promise<string> {
+// Upsert (cumulative) payment to MongoDB for a sender->recipient pair
+async function upsertCumulativePayment(payment: Payment): Promise<string> {
   try {
     if (!process.env.MONGODB_URI || !process.env.MONGODB_DB_NAME) {
       throw new Error("MongoDB configuration missing");
@@ -83,18 +84,40 @@ async function savePayment(payment: Payment): Promise<string> {
     const db = client.db(process.env.MONGODB_DB_NAME);
     const collection = db.collection("payments");
 
-    const result = await collection.insertOne({
-      ...payment,
-      createdAt: new Date(),
-      status: "pending",
-    });
+    const query = {
+      "sender.username": payment.sender.username,
+      "recipient.username": payment.recipient.username,
+    } as const;
 
-    await client.close();
-    return result.insertedId.toString();
+    const existing = await collection.findOne(query);
+
+    if (existing) {
+      const result = await collection.findOneAndUpdate(
+        query,
+        {
+          $inc: { totalAmount: payment.totalAmount },
+          $set: { updatedAt: new Date() },
+        },
+        { returnDocument: "after" }
+      );
+      await client.close();
+      // @ts-ignore
+      return (result?._id || existing._id).toString();
+    } else {
+      const doc = {
+        ...payment,
+        status: "pending",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      const insert = await collection.insertOne(doc);
+      await client.close();
+      return insert.insertedId.toString();
+    }
   } catch (error) {
-    console.error("Error saving payment:", error);
+    console.error("Error upserting payment:", error);
     throw new Error(
-      `Failed to save payment: ${
+      `Failed to upsert payment: ${
         error instanceof Error ? error.message : "Unknown error"
       }`
     );
@@ -194,7 +217,7 @@ function extractBillSplittingData(history: any[]): BillSplittingData {
 }
 
 // Generate settlement plan
-function generateSettlement(data: BillSplittingData): Payment | null {
+function generateSettlement(data: BillSplittingData): Payment[] | null {
   if (!data.totalAmount || !data.users || !data.payer || !data.splitMethod) {
     return null;
   }
@@ -204,39 +227,32 @@ function generateSettlement(data: BillSplittingData): Payment | null {
   if (splitMethod === "equal") {
     const amountPerPerson = totalAmount / users.length;
 
-    // All users (including payer) contribute their share
-    const senders = users.map((user) => ({ user, amount: amountPerPerson }));
+    // Create 1:1 payments where each non-payer owes the payer
+    const payments: Payment[] = users
+      .filter((u) => u.username !== payer.username)
+      .map((debtor) => ({
+        sender: debtor,
+        recipient: payer,
+        totalAmount: amountPerPerson,
+      }));
 
-    // The payer receives the full amount back since they paid upfront
-    const recipients = [{ user: payer, amount: totalAmount }];
-
-    return {
-      totalAmount,
-      senders,
-      recipients,
-    };
+    return payments;
   }
 
   // For now, only implement equal split. Other methods can be added later
   return null;
 }
 
-// Validate settlement sums consistency
-function validateSettlement(settlement: Payment): boolean {
+// Validate settlement sums consistency (sum of all 1:1 equals total)
+function validateSettlement(settlement: Payment[], totalAmount: number): boolean {
   const epsilon = 0.01; // tolerance for floating point arithmetic
-  const sumSenders = settlement.senders.reduce((acc, s) => acc + s.amount, 0);
-  const sumRecipients = settlement.recipients.reduce(
-    (acc, r) => acc + r.amount,
-    0
-  );
-  const total = settlement.totalAmount;
-  const close = (a: number, b: number) => Math.abs(a - b) <= epsilon;
-  return close(sumSenders, total) && close(sumRecipients, total);
+  const summed = settlement.reduce((acc, p) => acc + p.totalAmount, 0);
+  return Math.abs(summed - totalAmount) <= epsilon;
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, image, sessionID, refresh_session} = await req.json();
+    const { prompt, image, sessionID, refresh_session, stream = false } = await req.json();
 
     const userCookie = getCookie("user");
 
@@ -247,14 +263,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!userCookie) {
+    const userCookieValue = await userCookie;
+    if (!userCookieValue) {
       return NextResponse.json(
         { error: "Missing required fields: user not logged in/cookie not detected" },
         { status: 400 }
       );
     }
-
-    const userData = JSON.parse(userCookie);
+    const userData = JSON.parse(userCookieValue);
     const user_id = userData.username;
 
     // 1. Handle session creation/retrieval
@@ -286,24 +302,14 @@ export async function POST(req: NextRequest) {
     console.log("Bill data:", billData);
     let imageDataForGemini: string | undefined;
 
-    if (isFirstPrompt) {
-      // FIRST PROMPT: Handle receipt image analysis
-      if (!image) {
-        return NextResponse.json(
-          { error: "Receipt image is required for the first prompt" },
-          { status: 400 }
-        );
-      }
-
+    if (image) {
       console.log("Processing first prompt with receipt image...");
-      // Upload to Pinata and use the resulting HTTP URL for the LLM
       try {
         if (typeof image === "string" && image.startsWith("data:")) {
           const base64 = image.split(",")[1] || "";
           const buffer = Buffer.from(base64, "base64");
           const stored = await storeImage(buffer, "receipt.jpg");
           imageDataForGemini = stored.url;
-          // Track the stored URL in session images (non-blocking)
           session.images = Array.from(
             new Set([...(session.images || []), stored.url])
           );
@@ -311,7 +317,6 @@ export async function POST(req: NextRequest) {
           typeof image === "string" &&
           (image.startsWith("http://") || image.startsWith("https://"))
         ) {
-          // Optionally ensure it is pinned for persistence
           const stored = await storeImageFromUrl(image, "receipt.jpg");
           imageDataForGemini = stored.url;
           session.images = Array.from(
@@ -331,8 +336,7 @@ export async function POST(req: NextRequest) {
         );
       }
     } else {
-      // FOLLOW-UP PROMPTS: No need to resend image; rely on history text
-      console.log("Processing follow-up prompt using conversation context");
+      console.log("Processing prompt with text-only description...");
       imageDataForGemini = undefined;
     }
 
@@ -382,7 +386,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 5. Check if user is confirming settlement
-    let paymentId: string | undefined;
+    let paymentIds: string[] | undefined;
     const updatedBillData = extractBillSplittingData([
       ...session.history,
       { role: "user", parts: [{ text: prompt }], timestamp: new Date() },
@@ -398,15 +402,20 @@ export async function POST(req: NextRequest) {
       conversationState === "WAITING_FOR_CONFIRMATION"
     ) {
       const settlement = generateSettlement(updatedBillData);
-      if (!settlement || !validateSettlement(settlement)) {
+      if (!settlement || !validateSettlement(settlement, updatedBillData.totalAmount || 0)) {
         return NextResponse.json(
           { error: "Agent is unreachable at the moment" },
           { status: 422 }
         );
       }
       try {
-        paymentId = await savePayment(settlement);
-        console.log("Payment saved with ID:", paymentId);
+        const ids: string[] = [];
+        for (const p of settlement) {
+          const id = await upsertCumulativePayment(p);
+          ids.push(id);
+        }
+        paymentIds = ids;
+        console.log("Payments upserted with IDs:", paymentIds);
       } catch (saveError) {
         console.error("Failed to save payment:", saveError);
         return NextResponse.json(
@@ -447,7 +456,7 @@ export async function POST(req: NextRequest) {
     console.log("Session updated successfully");
 
     // 7. Return response with bill splitting context
-    return NextResponse.json({
+    const responseData = {
       response: geminiResponse,
       sessionId: session.sessionId,
       messageCount: updatedSessionData.history.length,
@@ -456,9 +465,56 @@ export async function POST(req: NextRequest) {
       billSplitting: {
         state: conversationState,
         data: updatedBillData,
-        paymentId: paymentId,
+        paymentIds,
       },
-    });
+    };
+
+    if (stream) {
+      // Create a streaming response
+      const encoder = new TextEncoder();
+      const readableStream = new ReadableStream({
+        start(controller) {
+          // Send the response in chunks to simulate streaming
+          const text = geminiResponse.text || "";
+          const words = text.split(' ');
+          let currentText = '';
+          
+          const sendChunk = (index: number) => {
+            if (index >= words.length) {
+              // Send final metadata and close stream
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                type: 'metadata',
+                ...responseData
+              })}\n\n`));
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              controller.close();
+              return;
+            }
+            
+            currentText += (index > 0 ? ' ' : '') + words[index];
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+              type: 'content',
+              content: currentText
+            })}\n\n`));
+            
+            // Continue with next word after a small delay
+            setTimeout(() => sendChunk(index + 1), 50);
+          };
+          
+          sendChunk(0);
+        }
+      });
+
+      return new Response(readableStream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    } else {
+      return NextResponse.json(responseData);
+    }
   } catch (error) {
     console.error("API Error:", error);
     let errorMessage = "Unknown error";

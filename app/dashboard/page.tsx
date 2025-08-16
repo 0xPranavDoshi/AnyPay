@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { getCookie } from "@/utils/cookie";
 import { CrossChainPayment, PaymentStatus, TokenType } from "@/lib/interface";
 import PaymentModal from "@/components/PaymentModal";
 import TransactionModal from "@/components/TransactionModal";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface User {
   username: string;
@@ -31,6 +32,7 @@ export default function Dashboard() {
   const [input, setInput] = useState("");
   const [image, setImage] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
+  const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<"owe" | "owed">("owe");
   const [user, setUser] = useState<User | null>(null);
   const [crossChainPayments, setCrossChainPayments] = useState<CrossChainPayment[]>([]);
@@ -51,16 +53,21 @@ export default function Dashboard() {
 
   // Get user from cookies and fetch payments on component mount
   useEffect(() => {
-    const userCookie = getCookie("user");
-    if (userCookie) {
-      try {
-        const userData = JSON.parse(userCookie);
-        setUser(userData);
-        fetchUserPayments(userData.walletAddress);
-      } catch (error) {
-        console.error("Error parsing user cookie:", error);
+    const getUserData = () => {
+      // Client-side cookie parsing
+      const cookies = document.cookie.split(';');
+      const userCookie = cookies.find(cookie => cookie.trim().startsWith('user='));
+      if (userCookie) {
+        try {
+          const userData = JSON.parse(decodeURIComponent(userCookie.split('=')[1]));
+          setUser(userData);
+          fetchUserPayments(userData.walletAddress);
+        } catch (error) {
+          console.error("Error parsing user cookie:", error);
+        }
       }
-    }
+    };
+    getUserData();
   }, []);
 
   // Fetch cross-chain payments for user
@@ -79,91 +86,9 @@ export default function Dashboard() {
     }
   };
 
-  // Check for pending messages after returning from payment gateway
-  useEffect(() => {
-    const chatData = sessionStorage.getItem("chatData");
-    if (chatData) {
-      try {
-        const data = JSON.parse(chatData);
+  // Remove old payment gateway logic - no longer needed
 
-        // Restore the complete chat history
-        if (data.chatHistory) {
-          setChatHistory(data.chatHistory);
-        }
-
-        // Add the pending user message to chat history
-        if (data.pendingMessage) {
-          const userMessage: ChatMessage = {
-            role: "user",
-            content: data.pendingMessage.content,
-            image: data.pendingMessage.image,
-          };
-          setChatHistory((prev) => [...prev, userMessage]);
-
-          // Process the message (this would normally happen after payment)
-          processMessageAfterPayment(data.pendingMessage);
-        }
-
-        // Clear the stored chat data
-        sessionStorage.removeItem("chatData");
-      } catch (error) {
-        console.error("Error processing stored chat data:", error);
-      }
-    } else {
-      // Fallback: check for old format (backward compatibility)
-      const pendingMessage = sessionStorage.getItem("pendingMessage");
-      if (pendingMessage) {
-        try {
-          const messageData = JSON.parse(pendingMessage);
-
-          // Add the user message to chat history
-          const userMessage: ChatMessage = {
-            role: "user",
-            content: messageData.content,
-            image: messageData.image,
-          };
-          setChatHistory((prev) => [...prev, userMessage]);
-
-          // Clear the pending message
-          sessionStorage.removeItem("pendingMessage");
-
-          // Process the message
-          processMessageAfterPayment(messageData);
-        } catch (error) {
-          console.error("Error processing pending message:", error);
-        }
-      }
-    }
-  }, []);
-
-  // Function to process message after payment completion
-  const processMessageAfterPayment = async (messageData: {
-    content: string;
-    image?: string;
-  }) => {
-    setIsLoading(true);
-
-    try {
-      // TODO: Implement actual AI bot response
-      // For now, simulate a response
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      const botResponse: ChatMessage = {
-        role: "bot",
-        content: `Payment completed! I've processed your ${
-          messageData.image ? "receipt image and " : ""
-        }message: "${
-          messageData.content || "receipt"
-        }"\n\nThis appears to be a valid receipt. I'll help you split this expense with your group!`,
-      };
-
-      setChatHistory((prev) => [...prev, botResponse]);
-    } catch (error) {
-      console.error("Error getting bot response:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Removed processMessageAfterPayment - no longer needed
 
   // Mock data for now - will be replaced with real payment data
   const youOwe = [
@@ -283,6 +208,18 @@ export default function Dashboard() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size must be less than 5MB');
+      return;
+    }
+
     const reader = new FileReader();
     reader.onload = () => {
       if (typeof reader.result === "string") {
@@ -301,30 +238,115 @@ export default function Dashboard() {
   const handleSendMessage = async () => {
     if ((!input.trim() && !image) || isLoading) return;
 
-    // Store the complete chat history and pending message in sessionStorage
-    const chatData = {
-      chatHistory: chatHistory,
-      pendingMessage: {
-        content: input,
-        image: image,
-        timestamp: Date.now(),
-      },
+    const messageContent = input.trim();
+    const messageImage = image;
+    const isFirstClientMessage = chatHistory.length === 0;
+
+    // Add user message to chat immediately
+    const userMessage: ChatMessage = {
+      role: "user",
+      content: messageContent,
+      image: messageImage,
     };
-    sessionStorage.setItem("chatData", JSON.stringify(chatData));
+    setChatHistory(prev => [...prev, userMessage]);
 
     // Clear the input fields and image
     setInput("");
     setImage(undefined);
     if (fileInputRef.current) fileInputRef.current.value = "";
 
-    // Redirect to X402 gateway with message data as URL parameters
-    const params = new URLSearchParams();
-    if (input.trim()) params.append("message", input.trim());
-    if (image) params.append("image", image);
-    params.append("returnUrl", "/dashboard");
+    setIsLoading(true);
 
-    // Redirect to payment gateway
-    window.location.href = `/x402-gateway?${params.toString()}`;
+    try {
+      // Send message to agent API with streaming
+      const payload: any = {
+        prompt: messageContent,
+        image: messageImage,
+        stream: true,
+      };
+      // Refresh session on page load (first message after refresh)
+      if (isFirstClientMessage) {
+        payload.refresh_session = true;
+      } else {
+        payload.refresh_session = false;
+        if (sessionId) payload.sessionID = sessionId;
+      }
+
+      const response = await fetch("/api/agent", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to send message");
+      }
+
+      // Handle streaming response
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let streamingContent = "";
+
+      if (reader) {
+        // Add initial bot message for streaming
+        setChatHistory(prev => [...prev, {
+          role: "bot",
+          content: "",
+        }]);
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') {
+                setIsLoading(false);
+                return;
+              }
+
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.type === 'content') {
+                  streamingContent = parsed.content;
+                  // Update the last message (bot message) with streaming content
+                  setChatHistory(prev => {
+                    const updated = [...prev];
+                    if (updated[updated.length - 1]?.role === 'bot') {
+                      updated[updated.length - 1].content = streamingContent;
+                    }
+                    return updated;
+                  });
+                } else if (parsed.type === 'metadata') {
+                  // Handle bill splitting metadata if needed
+                  console.log('Bill splitting state:', parsed.billSplitting);
+                  // Capture and persist server-provided sessionId for follow-ups
+                  if (parsed.sessionId) {
+                    setSessionId(parsed.sessionId);
+                  }
+                }
+              } catch (e) {
+                console.error('Error parsing streaming data:', e);
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error sending message:", error);
+      setChatHistory(prev => [...prev, {
+        role: "bot",
+        content: "Sorry, I encountered an error processing your message. Please try again.",
+      }]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -529,6 +551,8 @@ export default function Dashboard() {
                 </h2>
                 <p className="text-[var(--color-text-muted)]">
                   Upload receipts and chat with your financial AI
+                  <br />
+                  <span className="text-xs">Supports markdown formatting</span>
                 </p>
               </div>
             </div>
@@ -573,7 +597,36 @@ export default function Dashboard() {
                             />
                           </div>
                         )}
-                        <p className="whitespace-pre-wrap">{message.content}</p>
+                        {message.role === "bot" ? (
+                          <div className="prose prose-sm max-w-none prose-invert">
+                            <ReactMarkdown 
+                              remarkPlugins={[remarkGfm]}
+                              components={{
+                                // Customize markdown components for better styling
+                                h1: ({...props}) => <h1 className="text-lg font-bold mb-2" {...props} />,
+                                h2: ({...props}) => <h2 className="text-base font-bold mb-2" {...props} />,
+                                h3: ({...props}) => <h3 className="text-sm font-bold mb-1" {...props} />,
+                                p: ({...props}) => <p className="mb-2 last:mb-0" {...props} />,
+                                ul: ({...props}) => <ul className="list-disc pl-4 mb-2" {...props} />,
+                                ol: ({...props}) => <ol className="list-decimal pl-4 mb-2" {...props} />,
+                                li: ({...props}) => <li className="mb-1" {...props} />,
+                                code: ({children, ...props}) => (
+                                  <code className="bg-black/20 text-[var(--color-primary)] px-1 py-0.5 rounded text-xs" {...props}>
+                                    {children}
+                                  </code>
+                                ),
+                                pre: ({...props}) => <pre className="bg-black/20 p-2 rounded text-xs overflow-x-auto mb-2" {...props} />,
+                                blockquote: ({...props}) => <blockquote className="border-l-2 border-[var(--color-primary)] pl-2 italic mb-2" {...props} />,
+                                strong: ({...props}) => <strong className="font-bold" {...props} />,
+                                em: ({...props}) => <em className="italic" {...props} />,
+                              }}
+                            >
+                              {message.content}
+                            </ReactMarkdown>
+                          </div>
+                        ) : (
+                          <p className="whitespace-pre-wrap">{message.content}</p>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -635,10 +688,11 @@ export default function Dashboard() {
 
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] px-4 py-3 rounded-xl hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-all duration-200 hover:scale-105"
-                title="Upload Receipt"
+                className={`bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] px-4 py-3 rounded-xl hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-all duration-200 hover:scale-105 ${image ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : ''}`}
+                title={image ? "Replace Image (1 max)" : "Upload Image (1 max)"}
+                disabled={isLoading}
               >
-                📷
+                {image ? '🖼️' : '📷'}
               </button>
 
               <button

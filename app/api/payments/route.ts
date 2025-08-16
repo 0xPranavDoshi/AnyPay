@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
   console.log('asRecipient:', asRecipient);
 
   // Find payments where user is a sender
-  const senderQuery = { 'senders.user.username': username };
+  const senderQuery = { 'sender.username': username };
   const asSender = await payments.find(senderQuery).toArray();
   console.log('Sender query:', senderQuery);
   console.log('asSender:', asSender);
