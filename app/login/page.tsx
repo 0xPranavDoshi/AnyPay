@@ -179,7 +179,7 @@ export default function Login() {
           {/* Additional Info */}
           <div className="animate-fade-in-up stagger-3">
             <p className="text-[var(--color-text-secondary)] text-base">
-              Don't have an account?{" "}
+              Don{"'"}t have an account?{" "}
               <span className="text-[var(--color-primary)] cursor-pointer hover:underline font-semibold">
                 <a href="/signup">Sign up here</a>
               </span>
