@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { setCookie } from "@/utils/cookie";
 
 export default function Login() {
   const [username, setUsername] = useState("");
@@ -40,8 +41,9 @@ export default function Login() {
         throw new Error(data.error || "Login failed");
       }
 
-      // Login successful - redirect to dashboard
-      window.location.href = "/dashboard";
+  // Login successful - store user in cookie and redirect
+  setCookie("user", JSON.stringify(data.user));
+  window.location.href = "/dashboard";
     } catch (error) {
       console.error("Login error:", error);
       setError(
@@ -179,7 +181,7 @@ export default function Login() {
           {/* Additional Info */}
           <div className="animate-fade-in-up stagger-3">
             <p className="text-[var(--color-text-secondary)] text-base">
-              Don't have an account?{" "}
+              Don{"'"}t have an account?{" "}
               <span className="text-[var(--color-primary)] cursor-pointer hover:underline font-semibold">
                 <a href="/signup">Sign up here</a>
               </span>
