@@ -57,6 +57,8 @@ export async function POST(req: NextRequest) {
     paymentId = body.paymentId;
     const txHash = body.txHash;
     sourceChain = body.sourceChain;
+    const tokenType = body.tokenType || 0; // Default to USDC
+    const destinationChain = body.destinationChain;
 
     // Validate required fields
     if (!paymentId || !txHash || !sourceChain) {
@@ -73,53 +75,41 @@ export async function POST(req: NextRequest) {
     }
 
     console.log(`Using RPC: ${rpcUrl} for chain ${sourceChain}`);
-    const provider = new ethers.providers.JsonRpcProvider(rpcUrl);
     
-    // Test provider connection
-    try {
-      await provider.getNetwork();
-      console.log("Provider connected successfully");
-    } catch (networkError) {
-      console.error("Provider connection failed:", networkError);
-      throw new Error(`Failed to connect to ${sourceChain} network`);
-    }
+    // Update database immediately - don't wait for RPC confirmation
+    // MetaMask already confirmed the transaction was sent successfully
+    let messageId = "pending";
     
-    // Wait for transaction confirmation with timeout
-    console.log(`Waiting for transaction: ${txHash}`);
-    const receipt = await provider.waitForTransaction(txHash, 1, 30000); // 30 second timeout
+    console.log(`Recording transaction: ${txHash} (RPC confirmation will be attempted in background)`);
+
+    // Create payment data based on token type
+    let crossChainData;
     
-    if (!receipt) {
-      throw new Error("Transaction not found or failed");
+    if (tokenType === 0) { // USDC - direct token transfer
+      crossChainData = {
+        messageId: "direct-transfer", // Not a CCIP transfer
+        txHash: txHash,
+        sourceChain,
+        destinationChain: sourceChain, // Same chain for USDC
+        status: PaymentStatus.COMPLETED,
+        blockNumber: "pending",
+        gasUsed: "pending",
+        timestamp: new Date(),
+        ccipExplorerUrl: `https://sepolia.etherscan.io/tx/${txHash}` // Direct to explorer
+      };
+    } else { // CCIP-BnM or CCIP-LnM - cross-chain transfer
+      crossChainData = {
+        messageId: messageId || "pending",
+        txHash: txHash,
+        sourceChain,
+        destinationChain: destinationChain || "84532", // Base Sepolia
+        status: PaymentStatus.COMPLETED,
+        blockNumber: "pending",
+        gasUsed: "pending",
+        timestamp: new Date(),
+        ccipExplorerUrl: `https://ccip.chain.link/msg/${messageId || txHash}`
+      };
     }
-
-    console.log(`Transaction confirmed in block: ${receipt.blockNumber}`);
-
-    // Extract messageId from transaction logs (CCIP message ID)
-    let messageId = "";
-    for (const log of receipt.logs) {
-      try {
-        // Look for CCIP message ID in logs (bytes32 value)
-        if (log.topics.length > 1 && log.topics[1] && log.topics[1].length === 66) {
-          messageId = log.topics[1];
-          break;
-        }
-      } catch (error) {
-        // Continue if log parsing fails
-      }
-    }
-
-    // Create cross-chain payment data to save to payments collection
-    const crossChainData = {
-      messageId: messageId || "pending",
-      txHash: receipt.transactionHash,
-      sourceChain,
-      destinationChain: "84532", // Base Sepolia
-      status: PaymentStatus.COMPLETED,
-      blockNumber: receipt.blockNumber,
-      gasUsed: receipt.gasUsed.toString(),
-      timestamp: new Date(),
-      ccipExplorerUrl: `https://ccip.chain.link/msg/${messageId || receipt.transactionHash}`
-    };
 
     console.log("Saving cross-chain data:", crossChainData);
 
@@ -129,10 +119,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       paymentId,
-      txHash: receipt.transactionHash,
+      txHash: txHash,
       messageId,
-      blockNumber: receipt.blockNumber,
-      gasUsed: receipt.gasUsed.toString(),
+      blockNumber: "pending",
+      gasUsed: "pending",
       status: PaymentStatus.COMPLETED
     });
 

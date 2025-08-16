@@ -315,7 +315,9 @@ export default function Dashboard() {
           paymentId,
           txHash: tx.hash,
           sourceChain: paymentData.sourceChain,
-        }),
+          destinationChain: paymentData.destinationChain,
+          tokenType: paymentData.tokenType
+        })
       });
 
       const submitData = await submitResult.json();
