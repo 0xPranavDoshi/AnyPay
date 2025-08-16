@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
 import { MongoClient } from "mongodb";
-import { getCookie } from "@/utils/cookie";
 import { CrossChainPayment, PaymentStatus, TokenType } from "@/lib/interface";
 
 // Contract addresses from deployment
@@ -21,7 +20,7 @@ const CHAIN_SELECTORS = {
 // Token addresses
 const TOKEN_ADDRESSES = {
   "11155111": {
-    USDC: "0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8",
+    USDC: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", // Fixed USDC address for Ethereum Sepolia
     CCIP_BNM: "0x84F1bb3a3D82c9A6CF52c87a4F8dD5Ee5d23b4Fb",
     CCIP_LNM: "0x466D489b6d36E7E3b824ef491C225F5830E81cC1"
   },
@@ -114,18 +113,30 @@ async function updatePaymentStatus(paymentId: string, status: PaymentStatus, mes
 
 export async function POST(req: NextRequest) {
   try {
-    const { recipientAddress, amount, sourceChain, destinationChain, tokenType, signedTxData } = await req.json();
+    const { recipientAddress, amount, sourceChain, destinationChain, tokenType, userAddress, existingPaymentId } = await req.json();
 
     // Validate required fields
-    if (!recipientAddress || !amount || !sourceChain || !destinationChain || tokenType === undefined) {
+    if (!recipientAddress || !amount || !sourceChain || !destinationChain || tokenType === undefined || !userAddress) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    // Get user from cookie
-    const userCookie = getCookie("user");
+    // Get user from cookie (server-side)
+    const cookieHeader = req.headers.get('cookie');
+    let userCookie: string | null = null;
+    
+    if (cookieHeader) {
+      const cookies = cookieHeader.split('; ').reduce((acc, cookie) => {
+        const [name, value] = cookie.split('=');
+        acc[name] = decodeURIComponent(value);
+        return acc;
+      }, {} as Record<string, string>);
+      
+      userCookie = cookies['user'];
+    }
+    
     if (!userCookie) {
       return NextResponse.json(
         { error: "User not authenticated" },
@@ -143,11 +154,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create payment ID
-    const paymentId = `payment-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-
-    // Setup provider for transaction broadcasting
-    const provider = new ethers.JsonRpcProvider(RPC_URLS[sourceChain]);
+    // Use existing payment ID if provided, otherwise create new one
+    const paymentId = existingPaymentId || `payment-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+    
+    console.log("Payment ID:", paymentId, existingPaymentId ? "(existing)" : "(new)");
 
     // Get contract address  
     const contractAddress = CONTRACT_ADDRESSES[sourceChain];
@@ -167,102 +177,45 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Convert amount to wei (assuming 18 decimals)
-    const amountWei = ethers.parseEther(amount.toString());
+    // Convert amount to correct decimals based on token type
+    let amountWei;
+    if (tokenType === TokenType.USDC) {
+      // USDC has 6 decimals
+      amountWei = ethers.utils.parseUnits(amount.toString(), 6);
+    } else {
+      // CCIP-BnM and CCIP-LnM have 18 decimals
+      amountWei = ethers.utils.parseEther(amount.toString());
+    }
 
-    // Create initial payment record
-    const crossChainPayment: CrossChainPayment = {
+    // Store payment details for cross-chain transaction
+    // If existingPaymentId is provided, this will update that payment's crossChainPayments array
+    // Otherwise this creates a new payment flow
+    console.log("Prepared cross-chain payment:", {
       paymentId,
-      fromUser: {
-        username: userData.username,
-        walletAddress: userData.walletAddress,
-        password: ""
-      },
-      toUser: {
-        username: "recipient",
-        walletAddress: recipientAddress,
-        password: ""
-      },
+      existingPayment: !!existingPaymentId,
+      fromUser: userData.username,
+      toUser: recipientAddress,
       amount: parseFloat(amount),
       sourceChain,
       destinationChain,
-      destinationChainSelector: CHAIN_SELECTORS[destinationChain],
-      tokenType: tokenType as TokenType,
-      status: PaymentStatus.PENDING,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
+      tokenType
+    });
 
-    await saveCrossChainPayment(crossChainPayment);
-
-    const wallet = new ethers.Wallet(signedTxData, provider); //change this!
-
-    // Check and approve token if needed (for ERC20 tokens)
-    const tokenContract = new ethers.Contract(tokenAddress, ERC20_ABI, wallet);
-    const allowance = await tokenContract.allowance(wallet.address, contractAddress);
-    
-    let approvalTxHash = "";
-    if (allowance.lt(amountWei)) {
-      const approveTx = await tokenContract.approve(contractAddress, amountWei);
-      await approveTx.wait();
-      approvalTxHash = approveTx.hash;
-    }
-
-    // Update status to processing
-    await updatePaymentStatus(paymentId, PaymentStatus.PROCESSING);
-
-    // Instantiate the contract
-    const contract = new ethers.Contract(contractAddress, CONTRACT_ABI, wallet);
-
-    // Call payRecipient function
-    const tx = await contract.payRecipient(
-      recipientAddress,
-      CHAIN_SELECTORS[destinationChain],
-      tokenAddress,
-      amountWei,
-      tokenType,
-      paymentId,
-      { 
-        gasLimit: 300000 // Lower gas limit to keep fees reasonable
-      }
-    );
-    
-    // Wait for transaction confirmation
-    const receipt = await tx.wait();
-
-    // Extract messageId from transaction logs
-    let messageId = "";
-    for (const log of receipt.logs) {
-      try {
-        // Look for CCIP message ID in logs (bytes32 value)
-        if (log.topics.length > 1 && log.topics[1] && log.topics[1].length === 66) {
-          messageId = log.topics[1];
-          break;
-        }
-      } catch (error) {
-        // Continue if log parsing fails
-      }
-    }
-
-    // Update payment with transaction hash and message ID
-    await updatePaymentStatus(paymentId, PaymentStatus.COMPLETED, messageId, receipt.hash);
-
+    // Return transaction parameters for MetaMask to sign
     return NextResponse.json({
       success: true,
+      message: "Transaction parameters ready",
       paymentId,
-      txHash: receipt.hash,
-      messageId,
-      blockNumber: receipt.blockNumber,
-      gasUsed: receipt.gasUsed.toString(),
-      approvalTxHash,
-      status: PaymentStatus.COMPLETED,
-      details: {
-        sourceChain,
-        destinationChain, 
+      transactionParams: {
+        contractAddress,
+        tokenAddress,
+        amountWei: amountWei.toString(),
+        recipientAddress,
+        destinationChainSelector: CHAIN_SELECTORS[destinationChain],
         tokenType,
-        amount,
-        recipient: recipientAddress
-      }
+        gasLimit: "250000"
+      },
+      status: PaymentStatus.PENDING
     });
 
   } catch (error) {

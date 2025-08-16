@@ -17,7 +17,7 @@ library NetworkConfig {
         return Network({
             ccipRouter: 0xD0daae2231E9CB96b94C8512223533293C3693Bf,
             link: 0x779877A7B0D9E8603169DdbD7836e478b4624789,
-            usdc: 0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8,
+            usdc: 0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238, // Fixed USDC address
             weth: 0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14,
             swapRouter: 0x3bFA4769FB09eefC5a80d6E87c3B9C650f7Ae48E,
             ccipBnM: 0x84F1bb3a3D82c9A6CF52c87a4F8dD5Ee5d23b4Fb, // CCIP-BnM on Ethereum Sepolia

@@ -5,14 +5,7 @@ import { getCookie, removeCookie } from "@/utils/cookie";
 import { CrossChainPayment, PaymentStatus, TokenType } from "@/lib/interface";
 import PaymentModal from "@/components/PaymentModal";
 import TransactionModal from "@/components/TransactionModal";
-import UserMentionDropdown from "@/components/UserMentionDropdown";
-import SelectedUsers from "@/components/SelectedUsers";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { CdpClient } from "@coinbase/cdp-sdk";
-import { privateKeyToAccount, toAccount } from "viem/accounts";
-import { wrapFetchWithPayment, decodeXPaymentResponse } from "x402-fetch";
-  
+
 interface User {
   username: string;
   walletAddress: string;
@@ -33,6 +26,13 @@ interface ChatMessage {
   image?: string;
 }
 
+// Declare ethereum for TypeScript
+declare global {
+  interface Window {
+    ethereum?: any;
+  }
+}
+
 export default function Dashboard() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -49,6 +49,7 @@ export default function Dashboard() {
     isOpen: boolean;
     recipientUser?: { username: string; walletAddress: string };
     amount?: number;
+    paymentId?: string;
   }>({ isOpen: false });
   const [transactionState, setTransactionState] = useState<{
     isProcessing: boolean;
@@ -58,19 +59,6 @@ export default function Dashboard() {
     totalSteps: number;
   }>({ isProcessing: false, status: "", step: 0, totalSteps: 4 });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [usersSelected, setUsersSelected] = useState<User[]>([]);
-
-  // Mention system state
-  const [mentionDropdown, setMentionDropdown] = useState<{
-    isOpen: boolean;
-    searchTerm: string;
-    position: { x: number; y: number };
-  }>({
-    isOpen: false,
-    searchTerm: "",
-    position: { x: 0, y: 0 },
-  });
-  const inputRef = useRef<HTMLInputElement>(null);
 
   // Get user from cookies and fetch payments on component mount
   useEffect(() => {
@@ -95,14 +83,16 @@ export default function Dashboard() {
     getUserData();
   }, []);
 
-  // Fetch cross-chain payments for user
+  // Fetch real payments for user from database
   const fetchUserPayments = async (userAddress: string) => {
     try {
       setPaymentsLoading(true);
-      const response = await fetch(`/api/pay?userAddress=${userAddress}`);
+      const response = await fetch(`/api/payments?userAddress=${userAddress}`);
       if (response.ok) {
         const data = await response.json();
-        setCrossChainPayments(data.payments || []);
+        setYouOwe(data.youOwe || []);
+        setOwedToYou(data.owedToYou || []);
+        setCrossChainPayments(data.crossChainPayments || []);
       }
     } catch (error) {
       console.error("Error fetching payments:", error);
@@ -124,24 +114,39 @@ export default function Dashboard() {
     window.location.href = "/";
   };
 
-  // Mock data for now - will be replaced with real payment data
-  const youOwe = [
-    { user: { username: "alice", walletAddress: "0x123..." }, amount: 45.67 },
-    { user: { username: "bob", walletAddress: "0x456..." }, amount: 23.5 },
-    { user: { username: "charlie", walletAddress: "0x789..." }, amount: 89.99 },
-  ];
+  // Chain configurations (matching deployed contracts from testing/.env)
+  const CHAINS = {
+    "11155111": {
+      name: "Ethereum Sepolia",
+      tokens: [TokenType.USDC, TokenType.CCIP_BNM, TokenType.CCIP_LNM],
+      explorerUrl: "https://sepolia.etherscan.io/tx/",
+      routerAddress: "0xD0daae2231E9CB96b94C8512223533293C3693Bf" // Fixed router address
+    },
+    "421614": {
+      name: "Arbitrum Sepolia", 
+      tokens: [TokenType.USDC, TokenType.CCIP_BNM, TokenType.CCIP_LNM],
+      explorerUrl: "https://sepolia.arbiscan.io/tx/",
+      routerAddress: "0x2a9C5afB0d0e4BAb2BCdaE109EC4b0c4Be15a165"
+    },
+    "84532": {
+      name: "Base Sepolia",
+      tokens: [TokenType.USDC, TokenType.CCIP_BNM, TokenType.CCIP_LNM],
+      explorerUrl: "https://sepolia.basescan.org/tx/",
+      routerAddress: "0xD3b06cEbF099CE7DA4AcCf578aaebFDBd6e88a93"
+    }
+  };
 
-  const owedToYou = [
-    { user: { username: "david", walletAddress: "0xabc..." }, amount: 12.75 },
-    { user: { username: "eve", walletAddress: "0xdef..." }, amount: 34.2 },
-    { user: { username: "frank", walletAddress: "0xghi..." }, amount: 67.8 },
-  ];
+  const TOKEN_NAMES = {
+    [TokenType.USDC]: "USDC",
+    [TokenType.CCIP_BNM]: "CCIP-BnM",
+    [TokenType.CCIP_LNM]: "CCIP-LnM"
+  };
 
-  const handlePayUser = (targetUser: User, amount: number) => {
+  const handlePayUser = (targetUser: User, amount: number, paymentId: string) => {
     setPaymentModal({
       isOpen: true,
       recipientUser: targetUser,
-      amount,
+      amount
     });
   };
 
@@ -156,30 +161,30 @@ export default function Dashboard() {
       // Start transaction process
       setTransactionState({
         isProcessing: true,
-        status: "Connecting to wallet...",
+        status: "Starting payment process...",
         step: 1,
-        totalSteps: 4,
+        totalSteps: 4
       });
 
       // Step 1: Connect wallet & switch chain (simulated)
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      setTransactionState((prev) => ({
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setTransactionState(prev => ({
         ...prev,
         status: "Requesting token approval...",
-        step: 2,
+        step: 2
       }));
 
       // Step 2: Token approval (simulated)
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      setTransactionState((prev) => ({
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      setTransactionState(prev => ({
         ...prev,
         status: "Confirming cross-chain transaction...",
-        step: 3,
+        step: 3
       }));
 
       // Step 3: Transaction signing and submission
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
       const response = await fetch("/api/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -189,52 +194,52 @@ export default function Dashboard() {
           sourceChain: paymentData.sourceChain,
           destinationChain: paymentData.destinationChain,
           tokenType: paymentData.tokenType,
-          signedTxData: "0x...", // Would contain actual signed transaction
-        }),
+          signedTxData: "0x..." // Would contain actual signed transaction
+        })
       });
 
       const result = await response.json();
-
+      
       if (result.success) {
-        setTransactionState((prev) => ({
+        setTransactionState(prev => ({
           ...prev,
           status: "Transaction confirmed!",
           step: 4,
-          txHash: result.txHash,
+          txHash: result.txHash
         }));
-
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-
+        
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
         setPaymentModal({ isOpen: false });
         setTransactionState({
           isProcessing: false,
           status: "",
           step: 0,
-          totalSteps: 4,
+          totalSteps: 4
         });
 
         if (user) {
           fetchUserPayments(user.walletAddress);
         }
       } else {
-        throw new Error(result.error);
+        throw new Error(submitResult.error || submitResult.details);
       }
     } catch (error) {
       console.error("Payment error:", error);
       setTransactionState({
         isProcessing: false,
-        status: "Transaction failed",
+        status: `❌ Error: ${error instanceof Error ? error.message : "Unknown error"}`,
         step: 0,
-        totalSteps: 4,
+        totalSteps: 4
       });
       setTimeout(() => {
         setTransactionState({
           isProcessing: false,
           status: "",
           step: 0,
-          totalSteps: 4,
+          totalSteps: 4
         });
-      }, 3000);
+      }, 5000);
     }
   };
 
@@ -366,14 +371,7 @@ export default function Dashboard() {
         if (sessionId) payload.sessionID = sessionId;
       }
 
-      const account = privateKeyToAccount(
-        process.env.NEXT_PUBLIC_WALLET_PRIV_KEY as `0x${string}`
-      );
-      console.log("account", account);
-
-      const fetchWithPayment = wrapFetchWithPayment(fetch, account);
-
-      const response = await fetchWithPayment("/api/agent", {
+      const response = await fetch("/api/agent", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -381,33 +379,10 @@ export default function Dashboard() {
         body: JSON.stringify(payload),
       });
 
-      console.log("response:", response);
-
-      // const body = await response.json();
-      // console.log("body", body);
-
-      const paymentResponse = decodeXPaymentResponse(
-        response.headers.get("x-payment-response")!
-      );
-      console.log("paymentResponse", paymentResponse);
-
-      if (!paymentResponse.success) {
-        console.log("paymentResponse failed", paymentResponse);
-        alert("X402 Payment failed, please try again");
-        return;
+      if (!response.ok) {
+        throw new Error("Failed to send message");
       }
 
-      // const response = await fetch("/api/agent", {
-      //   method: "POST",
-      //   headers: {
-      //     "Content-Type": "application/json",
-      //   },
-      //   body: JSON.stringify(payload),
-      // });
-
-      // if (!response.ok) {
-      //   throw new Error("Failed to send message");
-      // }
 
       // Handle streaming response
       const reader = response.body?.getReader();
@@ -577,7 +552,12 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {youOwe.length === 0 ? (
+                  {paymentsLoading ? (
+                    <div className="text-center py-8 text-[var(--color-text-muted)]">
+                      <div className="text-4xl mb-2">⏳</div>
+                      <p>Loading your payments...</p>
+                    </div>
+                  ) : youOwe.length === 0 ? (
                     <div className="text-center py-8 text-[var(--color-text-muted)]">
                       <div className="text-4xl mb-2">🎉</div>
                       <p>You&apos;re all caught up! No outstanding debts.</p>
@@ -597,6 +577,11 @@ export default function Dashboard() {
                               <p className="text-sm text-[var(--color-text-muted)] font-mono">
                                 {item.user.walletAddress}
                               </p>
+                              {item.description && (
+                                <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                                  {item.description}
+                                </p>
+                              )}
                             </div>
                             <div className="text-right">
                               <p className="text-xl font-bold text-red-400">
@@ -604,13 +589,51 @@ export default function Dashboard() {
                               </p>
                             </div>
                           </div>
+                          
+                          {/* Cross-chain payment tracking */}
+                          {item.crossChainPayments && item.crossChainPayments.length > 0 && (
+                            <div className="mb-3 p-2 bg-blue-900/20 rounded-lg border border-blue-500/30">
+                              <p className="text-xs text-blue-300 mb-1">🔗 CCIP Transactions:</p>
+                              {item.crossChainPayments.map((ccipTx: any, ccipIndex: number) => (
+                                <div key={ccipIndex} className="text-xs text-blue-200 space-y-1">
+                                  <div className="flex justify-between items-center">
+                                    <span>{ccipTx.status || "Processing"}</span>
+                                    {ccipTx.txHash && (
+                                      <a 
+                                        href={`${CHAINS[ccipTx.sourceChain as keyof typeof CHAINS]?.explorerUrl || "#"}${ccipTx.txHash}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-300 hover:text-blue-100 underline"
+                                      >
+                                        View Tx
+                                      </a>
+                                    )}
+                                  </div>
+                                  {ccipTx.messageId && ccipTx.messageId !== "pending" && (
+                                    <div className="flex justify-between items-center">
+                                      <span>CCIP Message:</span>
+                                      <a 
+                                        href={`https://ccip.chain.link/msg/${ccipTx.messageId}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-300 hover:text-blue-100 underline"
+                                      >
+                                        Track CCIP
+                                      </a>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          
                           <button
                             onClick={() =>
-                              handlePayUser(item.user, item.amount)
+                              handlePayUser(item.user, item.amount, item.paymentId)
                             }
                             className="w-full bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/80 text-white py-3 rounded-lg font-semibold hover:scale-105 transition-all duration-200 hover:shadow-lg hover:shadow-[var(--color-primary)]/30"
                           >
-                            Pay ${item.amount.toFixed(2)}
+                            💳 Pay ${item.amount.toFixed(2)} Cross-Chain
                           </button>
                         </div>
                       ))}
@@ -634,7 +657,12 @@ export default function Dashboard() {
                     </div>
                   </div>
 
-                  {owedToYou.length === 0 ? (
+                  {paymentsLoading ? (
+                    <div className="text-center py-8 text-[var(--color-text-muted)]">
+                      <div className="text-4xl mb-2">⏳</div>
+                      <p>Loading your payments...</p>
+                    </div>
+                  ) : owedToYou.length === 0 ? (
                     <div className="text-center py-8 text-[var(--color-text-muted)]">
                       <div className="text-4xl mb-2">📝</div>
                       <p>No pending payments owed to you.</p>
@@ -646,7 +674,7 @@ export default function Dashboard() {
                           key={index}
                           className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 hover:border-green-500/30 transition-all duration-200"
                         >
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between mb-3">
                             <div>
                               <p className="font-semibold text-[var(--color-text-primary)]">
                                 {item.user.username}
@@ -654,6 +682,11 @@ export default function Dashboard() {
                               <p className="text-sm text-[var(--color-text-muted)] font-mono">
                                 {item.user.walletAddress}
                               </p>
+                              {item.description && (
+                                <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                                  {item.description}
+                                </p>
+                              )}
                             </div>
                             <div className="text-right">
                               <p className="text-xl font-bold text-green-400">
@@ -664,6 +697,43 @@ export default function Dashboard() {
                               </p>
                             </div>
                           </div>
+                          
+                          {/* Cross-chain payment tracking */}
+                          {item.crossChainPayments && item.crossChainPayments.length > 0 && (
+                            <div className="p-2 bg-green-900/20 rounded-lg border border-green-500/30">
+                              <p className="text-xs text-green-300 mb-1">🔗 CCIP Transactions:</p>
+                              {item.crossChainPayments.map((ccipTx: any, ccipIndex: number) => (
+                                <div key={ccipIndex} className="text-xs text-green-200 space-y-1">
+                                  <div className="flex justify-between items-center">
+                                    <span>{ccipTx.status || "Processing"}</span>
+                                    {ccipTx.txHash && (
+                                      <a 
+                                        href={`${CHAINS[ccipTx.sourceChain as keyof typeof CHAINS]?.explorerUrl || "#"}${ccipTx.txHash}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-green-300 hover:text-green-100 underline"
+                                      >
+                                        View Tx
+                                      </a>
+                                    )}
+                                  </div>
+                                  {ccipTx.messageId && ccipTx.messageId !== "pending" && (
+                                    <div className="flex justify-between items-center">
+                                      <span>CCIP Message:</span>
+                                      <a 
+                                        href={`https://ccip.chain.link/msg/${ccipTx.messageId}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-green-300 hover:text-green-100 underline"
+                                      >
+                                        Track CCIP
+                                      </a>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -937,6 +1007,23 @@ export default function Dashboard() {
         totalSteps={transactionState.totalSteps}
         txHash={transactionState.txHash}
       />
+      
+      {/* Transaction Status Outside Modal */}
+      {transactionState.status && !transactionState.isProcessing && (
+        <div className="fixed bottom-4 right-4 z-50 bg-gray-800 border border-gray-600 rounded-lg p-4 max-w-sm">
+          <p className="text-sm text-white">{transactionState.status}</p>
+          {transactionState.txHash && (
+            <a 
+              href={`https://ccip.chain.link/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-400 hover:text-blue-300 text-xs underline block mt-1"
+            >
+              🔗 Track CCIP Transaction
+            </a>
+          )}
+        </div>
+      )}
     </div>
   );
 }
