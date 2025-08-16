@@ -6,6 +6,9 @@ import PaymentModal from "@/components/PaymentModal";
 import TransactionModal from "@/components/TransactionModal";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { CdpClient } from "@coinbase/cdp-sdk";
+import { privateKeyToAccount, toAccount } from "viem/accounts";
+import { wrapFetchWithPayment, decodeXPaymentResponse } from "x402-fetch";
 
 interface User {
   username: string;
@@ -35,7 +38,9 @@ export default function Dashboard() {
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [activeTab, setActiveTab] = useState<"owe" | "owed">("owe");
   const [user, setUser] = useState<User | null>(null);
-  const [crossChainPayments, setCrossChainPayments] = useState<CrossChainPayment[]>([]);
+  const [crossChainPayments, setCrossChainPayments] = useState<
+    CrossChainPayment[]
+  >([]);
   const [paymentsLoading, setPaymentsLoading] = useState(true);
   const [paymentModal, setPaymentModal] = useState<{
     isOpen: boolean;
@@ -86,10 +91,6 @@ export default function Dashboard() {
     }
   };
 
-  // Remove old payment gateway logic - no longer needed
-
-  // Removed processMessageAfterPayment - no longer needed
-
   // Mock data for now - will be replaced with real payment data
   const youOwe = [
     { user: { username: "alice", walletAddress: "0x123..." }, amount: 45.67 },
@@ -107,7 +108,7 @@ export default function Dashboard() {
     setPaymentModal({
       isOpen: true,
       recipientUser: targetUser,
-      amount
+      amount,
     });
   };
 
@@ -124,28 +125,28 @@ export default function Dashboard() {
         isProcessing: true,
         status: "Connecting to wallet...",
         step: 1,
-        totalSteps: 4
+        totalSteps: 4,
       });
 
       // Step 1: Connect wallet & switch chain (simulated)
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setTransactionState(prev => ({
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      setTransactionState((prev) => ({
         ...prev,
         status: "Requesting token approval...",
-        step: 2
+        step: 2,
       }));
 
       // Step 2: Token approval (simulated)
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setTransactionState(prev => ({
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      setTransactionState((prev) => ({
         ...prev,
         status: "Confirming cross-chain transaction...",
-        step: 3
+        step: 3,
       }));
 
       // Step 3: Transaction signing and submission
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
       const response = await fetch("/api/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -155,30 +156,30 @@ export default function Dashboard() {
           sourceChain: paymentData.sourceChain,
           destinationChain: paymentData.destinationChain,
           tokenType: paymentData.tokenType,
-          signedTxData: "0x..." // Would contain actual signed transaction
-        })
+          signedTxData: "0x...", // Would contain actual signed transaction
+        }),
       });
 
       const result = await response.json();
-      
+
       if (result.success) {
-        setTransactionState(prev => ({
+        setTransactionState((prev) => ({
           ...prev,
           status: "Transaction confirmed!",
           step: 4,
-          txHash: result.txHash
+          txHash: result.txHash,
         }));
-        
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
+
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
         setPaymentModal({ isOpen: false });
         setTransactionState({
           isProcessing: false,
           status: "",
           step: 0,
-          totalSteps: 4
+          totalSteps: 4,
         });
-        
+
         if (user) {
           fetchUserPayments(user.walletAddress);
         }
@@ -191,14 +192,14 @@ export default function Dashboard() {
         isProcessing: false,
         status: "Transaction failed",
         step: 0,
-        totalSteps: 4
+        totalSteps: 4,
       });
       setTimeout(() => {
         setTransactionState({
           isProcessing: false,
           status: "",
           step: 0,
-          totalSteps: 4
+          totalSteps: 4,
         });
       }, 3000);
     }
@@ -253,8 +254,6 @@ export default function Dashboard() {
     // Clear the input fields and image
     setInput("");
     setImage(undefined);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-
     setIsLoading(true);
 
     try {
@@ -272,7 +271,14 @@ export default function Dashboard() {
         if (sessionId) payload.sessionID = sessionId;
       }
 
-      const response = await fetch("/api/agent", {
+      const account = privateKeyToAccount(
+        process.env.NEXT_PUBLIC_WALLET_PRIV_KEY as `0x${string}`
+      );
+      console.log("account", account);
+
+      const fetchWithPayment = wrapFetchWithPayment(fetch, account);
+
+      const response = await fetchWithPayment("/api/agent", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -280,12 +286,34 @@ export default function Dashboard() {
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to send message");
+      const body = await response.json();
+      console.log("body", body);
+
+      const paymentResponse = decodeXPaymentResponse(
+        response.headers.get("x-payment-response")!
+      );
+      console.log("paymentResponse", paymentResponse);
+
+      if (!paymentResponse.success) {
+        console.log("paymentResponse failed", paymentResponse);
+        alert("X402 Payment failed, please try again");
+        return;
       }
 
+      // const response = await fetch("/api/agent", {
+      //   method: "POST",
+      //   headers: {
+      //     "Content-Type": "application/json",
+      //   },
+      //   body: JSON.stringify(payload),
+      // });
+
+      // if (!response.ok) {
+      //   throw new Error("Failed to send message");
+      // }
+
       // Handle streaming response
-      const reader = response.body?.getReader();
+      const reader = body.getReader();
       const decoder = new TextDecoder();
       let streamingContent = "";
 
@@ -711,7 +739,9 @@ export default function Dashboard() {
       <PaymentModal
         isOpen={paymentModal.isOpen}
         onClose={() => setPaymentModal({ isOpen: false })}
-        recipientUser={paymentModal.recipientUser || { username: "", walletAddress: "" }}
+        recipientUser={
+          paymentModal.recipientUser || { username: "", walletAddress: "" }
+        }
         amount={paymentModal.amount || 0}
         onConfirm={handlePaymentConfirm}
       />

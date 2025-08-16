@@ -9,7 +9,7 @@ export const middleware = paymentMiddleware(
   payTo,
   {
     // Route configurations for protected endpoints
-    "/x402-gateway": {
+    "/api/agent": {
       price: "$0.01",
       network: "base-sepolia", // for mainnet, see Running on Mainnet section
       config: {
@@ -24,5 +24,5 @@ export const middleware = paymentMiddleware(
 
 // Configure which paths the middleware should run on
 export const config = {
-  matcher: ["/sdf"],
+  matcher: ["/api/agent/:path*"],
 };
