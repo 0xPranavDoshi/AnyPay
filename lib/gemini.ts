@@ -1,89 +1,118 @@
-import { GoogleGenerativeAI, type Content, type Part } from '@google/generative-ai';
-
 // Keep your external shape if you like
 export interface ChatMessage {
   role: 'user' | 'model';
   parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>;
 }
 
-export async function callGemini(prompt: string, imageUrl?: string, history: ChatMessage[] = []) {
-  if (!process.env.GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY environment variable is required');
+export async function callGemini(prompt: string, imageData?: string, history: ChatMessage[] = []) {
+  if (!process.env.OPENROUTER_API_KEY) {
+    throw new Error('OPENROUTER_API_KEY environment variable is required');
   }
 
-  // Map your history -> SDK types to satisfy the union (Part) properly
-  const historyAsContent: Content[] = history.map((m) => ({
-    role: m.role,
-    parts: m.parts.map((p) => {
-      if (typeof p.text === 'string') {
-        return { text: p.text } as Part;
+  // Convert history to OpenAI format messages
+  const messages: any[] = [];
+  
+  // Add conversation history
+  for (const msg of history) {
+    const role = msg.role === 'model' ? 'assistant' : 'user';
+    const content: any[] = [];
+    
+    for (const part of msg.parts) {
+      if (part.text) {
+        content.push({ type: 'text', text: part.text });
       }
-      if (p.inlineData) {
-        return {
-          inlineData: {
-            mimeType: p.inlineData.mimeType,
-            data: p.inlineData.data,
-          },
-        } as Part;
+      if (part.inlineData) {
+        content.push({
+          type: 'image_url',
+          image_url: {
+            url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
+          }
+        });
       }
-      // Defensive fallback: empty text part
-      return { text: '' } as Part;
-    }),
-  }));
+    }
+    
+    messages.push({ role, content });
+  }
 
-  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-  // 👇 switch to 2.5 Flash
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    // (optional) systemInstruction: 'You are a receipt-splitting assistant...'
-  });
+  // Build current message content
+  const currentContent: any[] = [{ type: 'text', text: prompt }];
 
-  // Build current message parts as proper SDK Parts
-  const parts: Part[] = [{ text: prompt }];
-
-  // If you’re on Next.js App Router, ensure this runs in the Node runtime, not Edge:
-  // export const runtime = 'nodejs'  (in your route file)
-  if (imageUrl) {
+  // Handle image data
+  if (imageData) {
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10_000);
-      const res = await fetch(imageUrl, { signal: controller.signal });
-      clearTimeout(timeout);
-      if (!res.ok) throw new Error(`Failed to fetch image: ${res.status} ${res.statusText}`);
-      const mimeType = res.headers.get('content-type') || 'image/jpeg';
-      const buf = Buffer.from(await res.arrayBuffer());
-      parts.push({
-        inlineData: {
-          mimeType,
-          data: buf.toString('base64'),
-        },
-      });
+      if (typeof imageData === 'string' && imageData.startsWith('data:')) {
+        // Handle base64 data URL directly
+        currentContent.push({
+          type: 'image_url',
+          image_url: { url: imageData }
+        });
+      } else {
+        // Handle regular URL - fetch and convert to base64
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10_000);
+        const res = await fetch(imageData, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (!res.ok) throw new Error(`Failed to fetch image: ${res.status} ${res.statusText}`);
+        const mimeType = res.headers.get('content-type') || 'image/jpeg';
+        const buf = Buffer.from(await res.arrayBuffer());
+        const base64Data = buf.toString('base64');
+        
+        currentContent.push({
+          type: 'image_url',
+          image_url: { url: `data:${mimeType};base64,${base64Data}` }
+        });
+      }
     } catch (e) {
-      console.error('Image fetch failed; continuing without image:', e);
+      console.error('Image processing failed; continuing without image:', e);
     }
   }
 
-  const chat = model.startChat({
-    history: historyAsContent,
-    generationConfig: {
-      temperature: 0.7,
-      topK: 40,
-      topP: 0.95,
-      maxOutputTokens: 1024,
+  // Add current message
+  messages.push({ role: 'user', content: currentContent });
+
+  const requestBody = {
+    model: 'google/gemini-2.0-flash-exp:free',
+    messages,
+    temperature: 0.7,
+    max_tokens: 1024,
+    top_p: 0.95,
+  };
+
+  console.log('Calling OpenRouter with model: google/gemini-2.0-flash-exp:free');
+
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://anypay.app',
+      'X-Title': 'AnyPay Receipt Splitter'
     },
+    body: JSON.stringify(requestBody)
   });
 
-  const result = await chat.sendMessage(parts);
-  const resp = result.response;
-  const text = resp.text();
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+  }
+
+  const result = await response.json();
+
+  // Debug logging for empty responses
+  const text = result.choices?.[0]?.message?.content || '';
+  if (!text || text.trim() === '') {
+    console.warn('OpenRouter returned empty text response');
+    console.warn('Finish reason:', result.choices?.[0]?.finish_reason);
+    console.warn('Full response:', JSON.stringify(result, null, 2));
+  }
 
   return {
     success: true,
     text,
     usage: {
-      promptTokens: resp.usageMetadata?.promptTokenCount ?? 0,
-      completionTokens: resp.usageMetadata?.candidatesTokenCount ?? 0,
-      totalTokens: resp.usageMetadata?.totalTokenCount ?? 0,
+      promptTokens: result.usage?.prompt_tokens ?? 0,
+      completionTokens: result.usage?.completion_tokens ?? 0,
+      totalTokens: result.usage?.total_tokens ?? 0,
     },
   };
 }

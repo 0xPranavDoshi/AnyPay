@@ -11,11 +11,18 @@ echo "================================"
 
 # Test data
 USER_ID="test-user-123"
-SESSION_ID="test-session-456"
+SESSION_ID="test-session-$(date +%s)" # Generate unique session ID based on timestamp
 PROMPT="What's in this image? Can you analyze it for me?"
 
-# Create a simple test image (base64 encoded 1x1 pixel PNG)
-TEST_IMAGE_BASE64="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=="
+# Read and encode tom.jpg image
+IMAGE_PATH="$(dirname "$0")/tom.jpg"
+if [ ! -f "$IMAGE_PATH" ]; then
+  echo "❌ Error: tom.jpg not found at $IMAGE_PATH"
+  exit 1
+fi
+
+echo "📸 Using image: $IMAGE_PATH"
+TEST_IMAGE_BASE64=$(base64 -i "$IMAGE_PATH")
 
 echo "📤 Sending request to: $API_ENDPOINT"
 echo "👤 User ID: $USER_ID"
@@ -23,14 +30,15 @@ echo "🔗 Session ID: $SESSION_ID"
 echo "💬 Prompt: $PROMPT"
 echo ""
 
-# Make the API call
+# Make the API call (FIRST PROMPT with fresh session)
 response=$(curl -s -X POST "$API_ENDPOINT" \
   -H "Content-Type: application/json" \
   -d "{
     \"prompt\": \"$PROMPT\",
     \"user_id\": \"$USER_ID\",
     \"sessionID\": \"$SESSION_ID\",
-    \"image\": \"data:image/png;base64,$TEST_IMAGE_BASE64\"
+    \"image\": \"data:image/jpeg;base64,$TEST_IMAGE_BASE64\",
+    \"refresh_session\": true
   }")
 
 # Check if request was successful
@@ -49,17 +57,19 @@ if [ $? -eq 0 ]; then
     echo ""
   fi
   
-  # Test a follow-up message in the same session
+  # Test a follow-up message in the same session (TEXT ONLY - testing simpler follow-up)
   echo "🔄 Testing follow-up message..."
   echo "==============================="
+  echo "📝 Follow-up prompt (text only - simple question about previous analysis)"
+  echo "⏳ Waiting 3 seconds to avoid rate limiting..."
+  sleep 3
   
   followup_response=$(curl -s -X POST "$API_ENDPOINT" \
     -H "Content-Type: application/json" \
     -d "{
-      \"prompt\": \"Can you tell me more about what you just analyzed?\",
+      \"prompt\": \"What color are Tom's eyes in the image?\",
       \"user_id\": \"$USER_ID\",
-      \"sessionID\": \"$SESSION_ID\",
-      \"image\": \"data:image/png;base64,$TEST_IMAGE_BASE64\"
+      \"sessionID\": \"$SESSION_ID\"
     }")
   
   echo "✅ Follow-up response:"

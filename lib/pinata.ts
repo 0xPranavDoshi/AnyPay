@@ -109,6 +109,57 @@ export async function storeImageFromUrl(imageUrl: string, fileName?: string): Pr
   }
 }
 
+export async function downloadImageFromPinata(ipfsUrl: string): Promise<string> {
+  try {
+    console.log(`Downloading image from IPFS: ${ipfsUrl}`);
+    
+    // Try multiple IPFS gateways for better reliability
+    const gateways = [
+      ipfsUrl,
+      ipfsUrl.replace('ipfs.io', 'gateway.pinata.cloud'),
+      ipfsUrl.replace('ipfs.io', 'cloudflare-ipfs.com'),
+    ];
+    
+    for (const gateway of gateways) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+        
+        const response = await fetch(gateway, { 
+          signal: controller.signal,
+          headers: {
+            'Accept': 'image/*',
+          }
+        });
+        
+        clearTimeout(timeout);
+        
+        if (!response.ok) {
+          console.warn(`Gateway ${gateway} failed: ${response.status}`);
+          continue;
+        }
+        
+        const contentType = response.headers.get('content-type') || 'image/jpeg';
+        const arrayBuffer = await response.arrayBuffer();
+        const base64Data = Buffer.from(arrayBuffer).toString('base64');
+        
+        console.log(`Successfully downloaded image from ${gateway}`);
+        return `data:${contentType};base64,${base64Data}`;
+        
+      } catch (gatewayError) {
+        console.warn(`Failed to download from ${gateway}:`, gatewayError);
+        continue;
+      }
+    }
+    
+    throw new Error('All IPFS gateways failed');
+    
+  } catch (error) {
+    console.error('Error downloading image from Pinata:', error);
+    throw new Error(`Failed to download image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
 export async function pinImageByCid(cid: string): Promise<void> {
   try {
     if (!process.env.PINATA_API_KEY) {

@@ -187,6 +187,49 @@ export async function addImageToSession(
   }
 }
 
+export async function clearSession(sessionId: string, userId: string): Promise<void> {
+  try {
+    const collection = await getSessionsCollection();
+    
+    await collection.deleteOne({ 
+      sessionId, 
+      userId 
+    });
+    
+    console.log(`Cleared session ${sessionId} for user ${userId}`);
+  } catch (error) {
+    console.error('Error clearing session:', error);
+    throw new Error(`Failed to clear session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+export async function createFreshSession(sessionId: string, userId: string): Promise<SessionData> {
+  try {
+    // Clear any existing session first
+    await clearSession(sessionId, userId);
+    
+    // Create a new session
+    const newSession: SessionData = {
+      sessionId,
+      userId,
+      history: [],
+      images: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const collection = await getSessionsCollection();
+    const result = await collection.insertOne(newSession);
+    const session = { ...newSession, _id: result.insertedId.toString() };
+    
+    console.log(`Created fresh session ${sessionId} for user ${userId}`);
+    return session;
+  } catch (error) {
+    console.error('Error creating fresh session:', error);
+    throw new Error(`Failed to create fresh session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
 // Cleanup function for graceful shutdown
 export async function closeConnection(): Promise<void> {
   if (client) {
