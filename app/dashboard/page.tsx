@@ -1,55 +1,71 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { usePayments } from "./usePayments";
 import { Payment } from "@/lib/interface";
+import { getCookie } from "@/utils/cookie";
 
 export default function Dashboard() {
  const [tab, setTab] = useState<"whoYouOwe" | "owedToYou">("whoYouOwe");
- // Hardcoded wallet address for demo; replace with actual user wallet from auth/session
- const walletAddress = "0x8d5470dd39ec0933a0ccaed0652e80ce891c4225";
- const { youOwe, owedToYou, loading, error } = usePayments(walletAddress);
+ const [username, setUsername] = useState<string | null>(null);
+ const { youOwe, owedToYou, loading, error } = usePayments(username || "");
+
+ useEffect(() => {
+	 const userCookie = getCookie("user");
+	 if (userCookie) {
+		 try {
+			 const user = JSON.parse(userCookie);
+			 setUsername(user.username);
+		 } catch {
+			 setUsername(null);
+		 }
+	 } else {
+		 setUsername(null);
+	 }
+ }, []);
 
 	 function renderYouOwe(payments: Payment[]) {
-		 if (loading) return <div className="text-center text-lg opacity-70">Loading...</div>;
-		 if (error) return <div className="text-center text-lg text-red-500">{error}</div>;
-		 // Flatten: For each payment where user is a sender, show recipient and amount owed
-		 const rows: { recipient: Payment['recipient'], amount: number }[] = [];
-		 payments.forEach(payment => {
-			 payment.senders?.forEach(sender => {
-				 if (sender.user.walletAddress === walletAddress) {
-					 rows.push({ recipient: payment.recipient, amount: sender.amount });
-				 }
-			 });
-		 });
-		 if (rows.length === 0) return <div className="text-center text-lg opacity-70">No data yet.</div>;
-		 return rows.map((row, idx) => (
-			 <div key={idx} className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-lg p-4 shadow flex flex-row justify-between items-center">
-				 <span className="font-medium">{row.recipient?.username || row.recipient?.walletAddress}</span>
-				 <span className="font-mono text-[var(--color-primary)]">${row.amount.toFixed(2)}</span>
-			 </div>
-		 ));
-	 }
+		 if (!username) return <div className="text-center text-lg text-red-500">No username found. Please log in.</div>;
+		if (loading) return <div className="text-center text-lg opacity-70">Loading...</div>;
+		if (error) return <div className="text-center text-lg text-red-500">{error}</div>;
+		// Flatten: For each payment where user is a sender, show recipient and amount owed
+		const rows: { recipient: Payment['recipient'], amount: number }[] = [];
+		payments.forEach(payment => {
+			payment.senders?.forEach(sender => {
+				if (sender.user.username === username) {
+					rows.push({ recipient: payment.recipient, amount: sender.amount });
+				}
+			});
+		});
+		if (rows.length === 0) return <div className="text-center text-lg opacity-70">No data yet.</div>;
+		return rows.map((row, idx) => (
+			<div key={idx} className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-lg p-4 shadow flex flex-row justify-between items-center">
+				<span className="font-medium">{row.recipient?.username || row.recipient?.walletAddress}</span>
+				<span className="font-mono text-[var(--color-primary)]">${row.amount.toFixed(2)}</span>
+			</div>
+		));
+	}
 
 	 function renderOwedToYou(payments: Payment[]) {
-		 if (loading) return <div className="text-center text-lg opacity-70">Loading...</div>;
-		 if (error) return <div className="text-center text-lg text-red-500">{error}</div>;
-		 // Flatten: For each payment where user is recipient, show each sender and amount
-		 const rows: { sender: { username: string; walletAddress: string }, amount: number }[] = [];
-		 payments.forEach(payment => {
-			 if (payment.recipient.walletAddress === walletAddress) {
-				 payment.senders?.forEach(sender => {
-					 rows.push({ sender: sender.user, amount: sender.amount });
-				 });
-			 }
-		 });
-		 if (rows.length === 0) return <div className="text-center text-lg opacity-70">No data yet.</div>;
-		 return rows.map((row, idx) => (
-			 <div key={idx} className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-lg p-4 shadow flex flex-row justify-between items-center">
-				 <span className="font-medium">{row.sender?.username || row.sender?.walletAddress}</span>
-				 <span className="font-mono text-[var(--color-primary)]">${row.amount.toFixed(2)}</span>
-			 </div>
-		 ));
-	 }
+		 if (!username) return <div className="text-center text-lg text-red-500">No username found. Please log in.</div>;
+		if (loading) return <div className="text-center text-lg opacity-70">Loading...</div>;
+		if (error) return <div className="text-center text-lg text-red-500">{error}</div>;
+		// Flatten: For each payment where user is recipient, show each sender and amount
+		const rows: { sender: { username: string; walletAddress: string }, amount: number }[] = [];
+		payments.forEach(payment => {
+			if (payment.recipient.username === username) {
+				payment.senders?.forEach(sender => {
+					rows.push({ sender: sender.user, amount: sender.amount });
+				});
+			}
+		});
+		if (rows.length === 0) return <div className="text-center text-lg opacity-70">No data yet.</div>;
+		return rows.map((row, idx) => (
+			<div key={idx} className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-lg p-4 shadow flex flex-row justify-between items-center">
+				<span className="font-medium">{row.sender?.username || row.sender?.walletAddress}</span>
+				<span className="font-mono text-[var(--color-primary)]">${row.amount.toFixed(2)}</span>
+			</div>
+		));
+	}
 
 	return (
 		<div className="min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] font-['Poppins',Inter,'SF_Pro_Display',system-ui,sans-serif]">
@@ -66,7 +82,7 @@ export default function Dashboard() {
 					{/* ...existing code... */}
 				</div>
 				 <div className="z-10 flex flex-col items-center justify-center h-full w-full gap-8 mt-12">
-					 <h1 className="text-3xl font-bold mb-8">Hey testPerson</h1>
+					 <h1 className="text-3xl font-bold mb-8">Hey {username || "testPerson"}</h1>
 					 <div className="flex flex-row items-start justify-center w-full gap-8">
 					 {/* Left Box with Tabs */}
 					 <div className="bg-[var(--color-bg-secondary,rgba(255,255,255,0.05))] rounded-xl shadow-lg p-8 w-full max-w-md min-h-[400px] flex flex-col">
