@@ -789,7 +789,7 @@ export default function Dashboard() {
             <div className="flex gap-2 mb-6">
               <button
                 onClick={() => setActiveTab("owe")}
-                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                className={`min-w-[120px] px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
                   activeTab === "owe"
                     ? "bg-gradient-to-r from-red-100 to-red-200 text-red-700 shadow-sm shadow-red-100/20 border-0"
                     : "bg-gradient-to-r from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-gradient-to-r hover:from-red-50/20 hover:to-red-100/20 hover:border-red-100/40 hover:text-red-600"
@@ -799,7 +799,7 @@ export default function Dashboard() {
               </button>
               <button
                 onClick={() => setActiveTab("owed")}
-                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                className={`min-w-[120px] px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
                   activeTab === "owed"
                     ? "bg-gradient-to-r from-green-100 to-emerald-200 text-green-700 shadow-sm shadow-green-100/20 border-0"
                     : "bg-gradient-to-r from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-gradient-to-r hover:from-green-50/20 hover:to-green-100/20 hover:border-green-100/40 hover:text-green-600"
@@ -809,7 +809,7 @@ export default function Dashboard() {
               </button>
               <button
                 onClick={() => setActiveTab("paid")}
-                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                className={`min-w-[120px] px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
                   activeTab === "paid"
                     ? "bg-gradient-to-r from-blue-100 to-cyan-200 text-blue-700 shadow-sm shadow-blue-100/20 border-0"
                     : "bg-gradient-to-r from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-gradient-to-r hover:from-blue-50/20 hover:to-blue-100/20 hover:border-blue-100/40 hover:text-blue-600"
@@ -1148,140 +1148,7 @@ export default function Dashboard() {
                     </div>
                   )}
                 </div>
-              ) : (
-                // Owed To You Section
-                <div>
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="w-12 h-12 bg-gradient-to-br from-green-50/30 to-green-100/20 rounded-xl flex items-center justify-center">
-                      <svg
-                        className="w-7 h-7 text-green-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"
-                        />
-                      </svg>
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-bold text-[var(--color-text-primary)]">
-                        Owed To You
-                      </h2>
-                      <p className="text-[var(--color-text-muted)]">
-                        People who owe you money
-                      </p>
-                    </div>
-                  </div>
-
-                  {paymentsLoading ? (
-                    <div className="text-center py-8 text-[var(--color-text-muted)]">
-                      <div className="text-4xl mb-2">⏳</div>
-                      <p>Loading your payments...</p>
-                    </div>
-                  ) : owedToYou.length === 0 ? (
-                    <div className="text-center py-12 text-[var(--color-text-muted)]">
-                      <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <span className="text-4xl">📋</span>
-                      </div>
-                      <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
-                        All Settled Up!
-                      </h3>
-                      <p className="text-[var(--color-text-muted)]">
-                        No pending payments owed to you
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {owedToYou.map((item, index) => (
-                        <div
-                          key={index}
-                          className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 hover:border-green-100/50 transition-all duration-200"
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <div>
-                              <p className="font-semibold text-[var(--color-text-primary)]">
-                                {item.user.username}
-                              </p>
-                              <p className="text-sm text-[var(--color-text-muted)] font-mono">
-                                {item.user.walletAddress}
-                              </p>
-                              {item.description && (
-                                <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                                  {item.description}
-                                </p>
-                              )}
-                            </div>
-                            <div className="text-right">
-                              <p className="text-xl font-bold text-green-400">
-                                ${item.amount.toFixed(2)}
-                              </p>
-                              <p className="text-xs text-[var(--color-text-muted)]">
-                                Pending
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Cross-chain payment tracking */}
-                          {item.crossChainPayments &&
-                            item.crossChainPayments.length > 0 && (
-                              <div className="p-2 bg-green-900/20 rounded-lg border border-green-500/30">
-                                <p className="text-xs text-green-300 mb-1">
-                                  🔗 CCIP Transactions:
-                                </p>
-                                {item.crossChainPayments.map(
-                                  (ccipTx: any, ccipIndex: number) => (
-                                    <div
-                                      key={ccipIndex}
-                                      className="text-xs text-green-200 space-y-1"
-                                    >
-                                      <div className="flex justify-between items-center">
-                                        <span>
-                                          {ccipTx.status || "Processing"}
-                                        </span>
-                                        {ccipTx.txHash && (
-                                          <a
-                                            href={`${
-                                              CHAINS[
-                                                ccipTx.sourceChain as keyof typeof CHAINS
-                                              ]?.explorerUrl || "#"
-                                            }${ccipTx.txHash}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-green-300 hover:text-green-100 underline"
-                                          >
-                                            View Tx
-                                          </a>
-                                        )}
-                                      </div>
-                                      {ccipTx.messageId &&
-                                        ccipTx.messageId !== "pending" && (
-                                          <div className="flex justify-between items-center">
-                                            <span>CCIP Message:</span>
-                                            <a
-                                              href={`https://ccip.chain.link/msg/${ccipTx.messageId}`}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="text-green-300 hover:text-green-100 underline"
-                                            >
-                                              Track CCIP
-                                            </a>
-                                          </div>
-                                        )}
-                                    </div>
-                                  )
-                                )}
-                              </div>
-                            )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+              ) : null}
             </div>
           </div>
 
