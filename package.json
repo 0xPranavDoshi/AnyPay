@@ -10,10 +10,12 @@
   },
   "dependencies": {
     "@coinbase/x402": "^0.5.1",
+    "@google/generative-ai": "^0.21.0",
     "@radix-ui/react-slot": "^1.2.3",
     "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "dotenv": "^17.2.1",
     "lucide-react": "^0.539.0",
     "mongodb": "^6.18.0",
     "next": "15.4.6",
