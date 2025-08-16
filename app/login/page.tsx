@@ -1,7 +1,5 @@
 "use client";
 
-import Image from "next/image";
-
 export default function Login() {
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] font-['Poppins',Inter,'SF_Pro_Display',system-ui,sans-serif]">
@@ -79,22 +77,6 @@ export default function Login() {
                 type="text"
                 id="username"
                 placeholder="Enter your username"
-                className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 text-lg transition-all duration-300 focus:border-[var(--color-primary)] focus:shadow-lg focus:shadow-[var(--color-primary)]/20 focus:outline-none focus:scale-[1.02]"
-              />
-            </div>
-
-            {/* Password Field */}
-            <div className="mb-6 text-left">
-              <label
-                htmlFor="password"
-                className="block text-[var(--color-text-primary)] font-semibold mb-2 text-left"
-              >
-                Password
-              </label>
-              <input
-                type="password"
-                id="password"
-                placeholder="Enter your password"
                 className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 text-lg transition-all duration-300 focus:border-[var(--color-primary)] focus:shadow-lg focus:shadow-[var(--color-primary)]/20 focus:outline-none focus:scale-[1.02]"
               />
             </div>

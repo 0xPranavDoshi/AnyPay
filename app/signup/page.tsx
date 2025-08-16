@@ -1,8 +1,56 @@
 "use client";
 
-import Image from "next/image";
+import { useState } from "react";
+
+// Extend Window interface to include ethereum
+declare global {
+  interface Window {
+    ethereum?: {
+      request: (args: { method: string; params?: any[] }) => Promise<any>;
+      on: (event: string, callback: (params: any) => void) => void;
+      removeListener: (event: string, callback: (params: any) => void) => void;
+    };
+  }
+}
 
 export default function SignUp() {
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [username, setUsername] = useState("");
+  const [walletAddress, setWalletAddress] = useState("");
+
+  const connectWallet = async () => {
+    try {
+      setIsConnecting(true);
+
+      // Check if MetaMask is installed
+      if (typeof window.ethereum !== "undefined") {
+        // Request account access
+        const accounts = await window.ethereum.request({
+          method: "eth_requestAccounts",
+        });
+        const account = accounts[0];
+
+        if (account) {
+          setWalletAddress(account);
+          console.log(
+            "Wallet connected:",
+            account,
+            " and username is",
+            username
+          );
+        }
+      } else {
+        // MetaMask not installed, prompt user to install
+        alert("Please install MetaMask to connect your wallet!");
+      }
+    } catch (error) {
+      console.error("Error connecting wallet:", error);
+      alert("Failed to connect wallet. Please try again.");
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] font-['Poppins',Inter,'SF_Pro_Display',system-ui,sans-serif]">
       {/* Navigation */}
@@ -78,23 +126,9 @@ export default function SignUp() {
               <input
                 type="text"
                 id="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 placeholder="Enter your username"
-                className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 text-lg transition-all duration-300 focus:border-[var(--color-primary)] focus:shadow-lg focus:shadow-[var(--color-primary)]/20 focus:outline-none focus:scale-[1.02]"
-              />
-            </div>
-
-            {/* Password Field */}
-            <div className="mb-4 text-left">
-              <label
-                htmlFor="password"
-                className="block text-[var(--color-text-primary)] font-semibold mb-2 text-left"
-              >
-                Create Password
-              </label>
-              <input
-                type="password"
-                id="password"
-                placeholder="Enter your password"
                 className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 text-lg transition-all duration-300 focus:border-[var(--color-primary)] focus:shadow-lg focus:shadow-[var(--color-primary)]/20 focus:outline-none focus:scale-[1.02]"
               />
             </div>
@@ -104,22 +138,26 @@ export default function SignUp() {
               <h3 className="text-[var(--color-text-primary)] font-semibold mb-3 text-left">
                 Connect Your Wallet
               </h3>
-              <button className="group relative overflow-hidden w-full bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary)]/80 text-white px-8 py-3 rounded-xl font-bold text-lg hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--color-primary)]/30">
-                <span className="relative z-10 flex items-center justify-center gap-3">
-                  <Image
-                    src="/partners/coinbase.png"
-                    alt="Coinbase"
-                    width={24}
-                    height={24}
-                    className="object-contain"
-                  />
-                  Connect Coinbase Wallet
-                </span>
-                <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/90 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-              </button>
+              {walletAddress ? (
+                <div className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-primary)] text-[var(--color-primary)] rounded-xl px-4 py-3 text-sm font-medium text-center">
+                  Connected: {walletAddress.slice(0, 6)}...
+                  {walletAddress.slice(-4)}
+                </div>
+              ) : (
+                <button
+                  onClick={connectWallet}
+                  disabled={isConnecting}
+                  className="group relative overflow-hidden w-full bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary)]/80 text-white px-8 py-3 rounded-xl font-bold text-lg hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--color-primary)]/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="relative z-10 flex items-center justify-center gap-3">
+                    <span className="text-xl">🔗</span>
+                    {isConnecting ? "Connecting..." : "Connect Wallet"}
+                  </span>
+                  <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/90 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                </button>
+              )}
               <p className="text-[var(--color-text-muted)] text-sm mt-2 text-left">
-                Securely connect your Coinbase wallet to start managing group
-                expenses
+                Connect any Web3 wallet to start managing group expenses
               </p>
             </div>
           </div>
