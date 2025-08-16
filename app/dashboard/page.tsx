@@ -54,6 +54,8 @@ export default function Dashboard() {
         reader.onload = () => {
             if (typeof reader.result === "string") {
                 setImage(reader.result);
+                // Reset input value after processing so same file can be uploaded again
+                if (e.target) e.target.value = "";
             }
         };
         reader.readAsDataURL(file);
@@ -152,8 +154,8 @@ export default function Dashboard() {
                             <div className="flex mb-4">
                                 <button
                                     className={`px-4 py-2 rounded-t-lg font-semibold transition-colors ${tab === "whoYouOwe"
-                                            ? "bg-[var(--color-primary)] text-white"
-                                            : "bg-transparent text-[var(--color-text-secondary)]"
+                                        ? "bg-[var(--color-primary)] text-white"
+                                        : "bg-transparent text-[var(--color-text-secondary)]"
                                         }`}
                                     onClick={() => setTab("whoYouOwe")}
                                 >
@@ -161,8 +163,8 @@ export default function Dashboard() {
                                 </button>
                                 <button
                                     className={`px-4 py-2 rounded-t-lg font-semibold transition-colors ml-2 ${tab === "owedToYou"
-                                            ? "bg-[var(--color-primary)] text-white"
-                                            : "bg-transparent text-[var(--color-text-secondary)]"
+                                        ? "bg-[var(--color-primary)] text-white"
+                                        : "bg-transparent text-[var(--color-text-secondary)]"
                                         }`}
                                     onClick={() => setTab("owedToYou")}
                                 >
@@ -238,10 +240,10 @@ export default function Dashboard() {
                                         <button
                                             type="button"
                                             className="absolute -top-2 -left-2 bg-white text-red-500 hover:bg-red-100 hover:text-red-700 text-lg font-bold w-6 h-6 rounded-full flex items-center justify-center shadow focus:outline-none z-10"
-                                                                     onClick={() => {
-                                                                         setImage(undefined);
-                                                                         if (fileInputRef.current) fileInputRef.current.value = "";
-                                                                     }}
+                                            onClick={() => {
+                                                setImage(undefined);
+                                                if (fileInputRef.current) fileInputRef.current.value = "";
+                                            }}
                                             aria-label="Remove image"
                                         >
                                             ×
