@@ -22,12 +22,13 @@ contract CrossChainPaymentSplitterPTT is CCIPReceiver, OwnerIsCreator {
     error InsufficientAmount();
     error TransferFailed();
 
-    // Supported tokens for PTT - only CCIP-BnM and USDC
-    enum TokenType { USDC, CCIP_BNM }
+    // Supported tokens for PTT - USDC, CCIP-BnM and CCIP-LnM
+    enum TokenType { USDC, CCIP_BNM, CCIP_LNM }
     
-    // Token addresses for PTT - only CCIP-BnM and USDC
+    // Token addresses for PTT - USDC, CCIP-BnM and CCIP-LnM
     address public immutable CCIP_BNM;
     address public immutable USDC;
+    address public immutable CCIP_LNM;
 
     // Events
     event DirectPaymentSent(
@@ -55,10 +56,12 @@ contract CrossChainPaymentSplitterPTT is CCIPReceiver, OwnerIsCreator {
     constructor(
         address router,
         address ccipBnM,
-        address usdc
+        address usdc,
+        address ccipLnM
     ) CCIPReceiver(router) {
         CCIP_BNM = ccipBnM;
         USDC = usdc;
+        CCIP_LNM = ccipLnM;
     }
 
     /**
@@ -186,8 +189,18 @@ contract CrossChainPaymentSplitterPTT is CCIPReceiver, OwnerIsCreator {
             return amount;
         }
         
+        // CCIP-LnM to USDC conversion (1:1 for demo)
+        if (fromToken == CCIP_LNM && toToken == USDC) {
+            return amount;
+        }
+        
         // USDC to CCIP-BnM conversion (1:1 for demo)
         if (fromToken == USDC && toToken == CCIP_BNM) {
+            return amount;
+        }
+        
+        // USDC to CCIP-LnM conversion (1:1 for demo)
+        if (fromToken == USDC && toToken == CCIP_LNM) {
             return amount;
         }
         
@@ -198,8 +211,8 @@ contract CrossChainPaymentSplitterPTT is CCIPReceiver, OwnerIsCreator {
     /**
      * @dev Get supported tokens for this chain
      */
-    function getSupportedTokens() external view returns (address ccipBnM, address usdc) {
-        return (CCIP_BNM, USDC);
+    function getSupportedTokens() external view returns (address ccipBnM, address usdc, address ccipLnM) {
+        return (CCIP_BNM, USDC, CCIP_LNM);
     }
 
     /**
@@ -208,6 +221,7 @@ contract CrossChainPaymentSplitterPTT is CCIPReceiver, OwnerIsCreator {
     function getTokenType(address token) external view returns (TokenType) {
         if (token == USDC) return TokenType.USDC;
         if (token == CCIP_BNM) return TokenType.CCIP_BNM;
+        if (token == CCIP_LNM) return TokenType.CCIP_LNM;
         revert InvalidToken();
     }
 

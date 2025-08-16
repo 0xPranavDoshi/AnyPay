@@ -2,6 +2,9 @@
 
 import { useState, useRef, useEffect } from "react";
 import { getCookie } from "@/utils/cookie";
+import { CrossChainPayment, PaymentStatus, TokenType } from "@/lib/interface";
+import PaymentModal from "@/components/PaymentModal";
+import TransactionModal from "@/components/TransactionModal";
 
 interface User {
   username: string;
@@ -30,20 +33,51 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"owe" | "owed">("owe");
   const [user, setUser] = useState<User | null>(null);
+  const [crossChainPayments, setCrossChainPayments] = useState<CrossChainPayment[]>([]);
+  const [paymentsLoading, setPaymentsLoading] = useState(true);
+  const [paymentModal, setPaymentModal] = useState<{
+    isOpen: boolean;
+    recipientUser?: { username: string; walletAddress: string };
+    amount?: number;
+  }>({ isOpen: false });
+  const [transactionState, setTransactionState] = useState<{
+    isProcessing: boolean;
+    status: string;
+    txHash?: string;
+    step: number;
+    totalSteps: number;
+  }>({ isProcessing: false, status: "", step: 0, totalSteps: 4 });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Get user from cookies on component mount
+  // Get user from cookies and fetch payments on component mount
   useEffect(() => {
     const userCookie = getCookie("user");
     if (userCookie) {
       try {
         const userData = JSON.parse(userCookie);
         setUser(userData);
+        fetchUserPayments(userData.walletAddress);
       } catch (error) {
         console.error("Error parsing user cookie:", error);
       }
     }
   }, []);
+
+  // Fetch cross-chain payments for user
+  const fetchUserPayments = async (userAddress: string) => {
+    try {
+      setPaymentsLoading(true);
+      const response = await fetch(`/api/pay?userAddress=${userAddress}`);
+      if (response.ok) {
+        const data = await response.json();
+        setCrossChainPayments(data.payments || []);
+      }
+    } catch (error) {
+      console.error("Error fetching payments:", error);
+    } finally {
+      setPaymentsLoading(false);
+    }
+  };
 
   // Check for pending messages after returning from payment gateway
   useEffect(() => {
@@ -131,7 +165,7 @@ export default function Dashboard() {
     }
   };
 
-  // Mock data - replace with actual data from your API
+  // Mock data for now - will be replaced with real payment data
   const youOwe = [
     { user: { username: "alice", walletAddress: "0x123..." }, amount: 45.67 },
     { user: { username: "bob", walletAddress: "0x456..." }, amount: 23.5 },
@@ -144,10 +178,105 @@ export default function Dashboard() {
     { user: { username: "frank", walletAddress: "0xghi..." }, amount: 67.8 },
   ];
 
-  const handlePayUser = (user: User, amount: number) => {
-    // TODO: Implement payment logic
-    console.log(`Paying ${user.username} $${amount}`);
-    alert(`Payment initiated for ${user.username} - $${amount}`);
+  const handlePayUser = (targetUser: User, amount: number) => {
+    setPaymentModal({
+      isOpen: true,
+      recipientUser: targetUser,
+      amount
+    });
+  };
+
+  const handlePaymentConfirm = async (paymentData: {
+    sourceChain: string;
+    destinationChain: string;
+    tokenType: TokenType;
+  }) => {
+    if (!paymentModal.recipientUser || !paymentModal.amount) return;
+
+    try {
+      // Start transaction process
+      setTransactionState({
+        isProcessing: true,
+        status: "Connecting to wallet...",
+        step: 1,
+        totalSteps: 4
+      });
+
+      // Step 1: Connect wallet & switch chain (simulated)
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      setTransactionState(prev => ({
+        ...prev,
+        status: "Requesting token approval...",
+        step: 2
+      }));
+
+      // Step 2: Token approval (simulated)
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      setTransactionState(prev => ({
+        ...prev,
+        status: "Confirming cross-chain transaction...",
+        step: 3
+      }));
+
+      // Step 3: Transaction signing and submission
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      const response = await fetch("/api/pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recipientAddress: paymentModal.recipientUser.walletAddress,
+          amount: paymentModal.amount,
+          sourceChain: paymentData.sourceChain,
+          destinationChain: paymentData.destinationChain,
+          tokenType: paymentData.tokenType,
+          signedTxData: "0x..." // Would contain actual signed transaction
+        })
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setTransactionState(prev => ({
+          ...prev,
+          status: "Transaction confirmed!",
+          step: 4,
+          txHash: result.txHash
+        }));
+        
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        setPaymentModal({ isOpen: false });
+        setTransactionState({
+          isProcessing: false,
+          status: "",
+          step: 0,
+          totalSteps: 4
+        });
+        
+        if (user) {
+          fetchUserPayments(user.walletAddress);
+        }
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error("Payment error:", error);
+      setTransactionState({
+        isProcessing: false,
+        status: "Transaction failed",
+        step: 0,
+        totalSteps: 4
+      });
+      setTimeout(() => {
+        setTransactionState({
+          isProcessing: false,
+          status: "",
+          step: 0,
+          totalSteps: 4
+        });
+      }, 3000);
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -523,6 +652,24 @@ export default function Dashboard() {
           </div>
         </div>
       </main>
+
+      {/* Payment Modal */}
+      <PaymentModal
+        isOpen={paymentModal.isOpen}
+        onClose={() => setPaymentModal({ isOpen: false })}
+        recipientUser={paymentModal.recipientUser || { username: "", walletAddress: "" }}
+        amount={paymentModal.amount || 0}
+        onConfirm={handlePaymentConfirm}
+      />
+
+      {/* Transaction Progress Modal */}
+      <TransactionModal
+        isOpen={transactionState.isProcessing}
+        status={transactionState.status}
+        step={transactionState.step}
+        totalSteps={transactionState.totalSteps}
+        txHash={transactionState.txHash}
+      />
     </div>
   );
 }

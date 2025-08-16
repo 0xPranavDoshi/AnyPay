@@ -13,6 +13,7 @@ async function main() {
           router: process.env.ETHEREUM_SEPOLIA_ROUTER,
           ccipBnM: process.env.ETHEREUM_SEPOLIA_CCIP_BNM,
           usdc: process.env.ETHEREUM_SEPOLIA_USDC,
+          ccipLnM: "0x466D489b6d36E7E3b824ef491C225F5830E81cC1",
           chainSelector: process.env.ETHEREUM_SEPOLIA_CHAIN_SELECTOR
         };
       case "arbitrumSepolia":
@@ -20,6 +21,7 @@ async function main() {
           router: process.env.ARBITRUM_SEPOLIA_ROUTER,
           ccipBnM: process.env.ARBITRUM_SEPOLIA_CCIP_BNM,
           usdc: process.env.ARBITRUM_SEPOLIA_USDC,
+          ccipLnM: "0x139E99f0ab4084E14e6bb7DacA289a91a2d92927",
           chainSelector: process.env.ARBITRUM_SEPOLIA_CHAIN_SELECTOR
         };
       case "baseSepolia":
@@ -27,6 +29,7 @@ async function main() {
           router: process.env.BASE_SEPOLIA_ROUTER,
           ccipBnM: process.env.BASE_SEPOLIA_CCIP_BNM,
           usdc: process.env.BASE_SEPOLIA_USDC,
+          ccipLnM: "0xF1623862e4c9f9Fba1Ac0181C4fF53B4f958F065",
           chainSelector: process.env.BASE_SEPOLIA_CHAIN_SELECTOR
         };
       default:
@@ -40,6 +43,7 @@ async function main() {
   console.log(`- Router: ${addresses.router}`);
   console.log(`- CCIP-BnM: ${addresses.ccipBnM}`);
   console.log(`- USDC: ${addresses.usdc}`);
+  console.log(`- CCIP-LnM: ${addresses.ccipLnM}`);
   console.log(`- Chain Selector: ${addresses.chainSelector}`);
 
   // Deploy the contract
@@ -49,7 +53,8 @@ async function main() {
   const contract = await CrossChainPaymentSplitterPTT.deploy(
     addresses.router,
     addresses.ccipBnM,
-    addresses.usdc
+    addresses.usdc,
+    addresses.ccipLnM
   );
 
   await contract.waitForDeployment();
@@ -60,10 +65,11 @@ async function main() {
   console.log(`🔗 Network: ${network}`);
   
   // Verify supported tokens
-  const [ccipBnMAddr, usdcAddr] = await contract.getSupportedTokens();
+  const [ccipBnMAddr, usdcAddr, ccipLnMAddr] = await contract.getSupportedTokens();
   console.log(`\n🪙 Supported Tokens:`);
   console.log(`- CCIP-BnM: ${ccipBnMAddr}`);
   console.log(`- USDC: ${usdcAddr}`);
+  console.log(`- CCIP-LnM: ${ccipLnMAddr}`);
 
   // Save deployment info
   const deploymentInfo = {
@@ -72,6 +78,7 @@ async function main() {
     router: addresses.router,
     ccipBnM: addresses.ccipBnM,
     usdc: addresses.usdc,
+    ccipLnM: addresses.ccipLnM,
     chainSelector: addresses.chainSelector,
     deployedAt: new Date().toISOString()
   };
