@@ -5,9 +5,9 @@ export interface User {
 }
 
 export interface Payment {
-  payer: User;
+  recipient: User;
   totalAmount: number;
-  owers: {
+  senders: {
     user: User;
     amount: number;
   }[];
