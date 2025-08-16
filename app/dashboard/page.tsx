@@ -784,20 +784,20 @@ export default function Dashboard() {
             <div className="flex gap-2 mb-6">
               <button
                 onClick={() => setActiveTab("owe")}
-                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
+                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
                   activeTab === "owe"
-                    ? "bg-[var(--color-primary)] text-white shadow-lg shadow-[var(--color-primary)]/30"
-                    : "bg-[var(--color-bg-card)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/30"
+                    ? "bg-gradient-to-r from-red-100 to-red-200 text-red-700 shadow-sm shadow-red-100/20 border-0"
+                    : "bg-gradient-to-r from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-gradient-to-r hover:from-red-50/20 hover:to-red-100/20 hover:border-red-100/40 hover:text-red-600"
                 }`}
               >
                 You Owe
               </button>
               <button
                 onClick={() => setActiveTab("owed")}
-                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
+                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
                   activeTab === "owed"
-                    ? "bg-[var(--color-primary)] text-white shadow-lg shadow-[var(--color-primary)]/30"
-                    : "bg-[var(--color-bg-card)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/30"
+                    ? "bg-gradient-to-r from-green-100 to-emerald-200 text-green-700 shadow-sm shadow-green-100/20 border-0"
+                    : "bg-gradient-to-r from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-gradient-to-r hover:from-green-50/20 hover:to-green-100/20 hover:border-green-100/40 hover:text-green-600"
                 }`}
               >
                 Owed To You
@@ -810,8 +810,20 @@ export default function Dashboard() {
                 // You Owe Section
                 <div>
                   <div className="flex items-center gap-3 mb-6">
-                    <div className="w-12 h-12 bg-gradient-to-br from-red-500/20 to-red-500/10 rounded-xl flex items-center justify-center">
-                      <span className="text-2xl">💸</span>
+                    <div className="w-12 h-12 bg-gradient-to-br from-red-50/30 to-red-100/20 rounded-xl flex items-center justify-center">
+                      <svg
+                        className="w-7 h-7 text-red-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
                     </div>
                     <div>
                       <h2 className="text-2xl font-bold text-[var(--color-text-primary)]">
@@ -829,16 +841,23 @@ export default function Dashboard() {
                       <p>Loading your payments...</p>
                     </div>
                   ) : youOwe.length === 0 ? (
-                    <div className="text-center py-8 text-[var(--color-text-muted)]">
-                      <div className="text-4xl mb-2">🎉</div>
-                      <p>You&apos;re all caught up! No outstanding debts.</p>
+                    <div className="text-center py-12 text-[var(--color-text-muted)]">
+                      <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span className="text-4xl">✨</span>
+                      </div>
+                      <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
+                        All Caught Up!
+                      </h3>
+                      <p className="text-[var(--color-text-muted)]">
+                        No outstanding debts to worry about
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-4">
                       {youOwe.map((item, index) => (
                         <div
                           key={index}
-                          className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 hover:border-[var(--color-primary)]/30 transition-all duration-200"
+                          className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 hover:border-red-100/50 transition-all duration-200"
                         >
                           <div className="flex items-center justify-between mb-3">
                             <div>
@@ -855,7 +874,7 @@ export default function Dashboard() {
                               )}
                             </div>
                             <div className="text-right">
-                              <p className="text-xl font-bold text-red-400">
+                              <p className="text-xl font-bold text-red-500">
                                 ${item.amount.toFixed(2)}
                               </p>
                             </div>
@@ -921,7 +940,7 @@ export default function Dashboard() {
                                 item.paymentId
                               )
                             }
-                            className="w-full bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/80 text-white py-3 rounded-lg font-semibold hover:scale-105 transition-all duration-200 hover:shadow-lg hover:shadow-[var(--color-primary)]/30"
+                            className="w-full bg-gradient-to-r from-red-100 to-red-200 text-red-700 py-3 rounded-lg font-semibold hover:scale-105 transition-all duration-200 hover:shadow-sm hover:shadow-red-100/20"
                           >
                             💳 Pay ${item.amount.toFixed(2)} Cross-Chain
                           </button>
@@ -934,8 +953,20 @@ export default function Dashboard() {
                 // Owed To You Section
                 <div>
                   <div className="flex items-center gap-3 mb-6">
-                    <div className="w-12 h-12 bg-gradient-to-br from-green-500/20 to-green-500/10 rounded-xl flex items-center justify-center">
-                      <span className="text-2xl">💰</span>
+                    <div className="w-12 h-12 bg-gradient-to-br from-green-50/30 to-green-100/20 rounded-xl flex items-center justify-center">
+                      <svg
+                        className="w-7 h-7 text-green-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"
+                        />
+                      </svg>
                     </div>
                     <div>
                       <h2 className="text-2xl font-bold text-[var(--color-text-primary)]">
@@ -953,16 +984,23 @@ export default function Dashboard() {
                       <p>Loading your payments...</p>
                     </div>
                   ) : owedToYou.length === 0 ? (
-                    <div className="text-center py-8 text-[var(--color-text-muted)]">
-                      <div className="text-4xl mb-2">📝</div>
-                      <p>No pending payments owed to you.</p>
+                    <div className="text-center py-12 text-[var(--color-text-muted)]">
+                      <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span className="text-4xl">📋</span>
+                      </div>
+                      <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
+                        All Settled Up!
+                      </h3>
+                      <p className="text-[var(--color-text-muted)]">
+                        No pending payments owed to you
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-4">
                       {owedToYou.map((item, index) => (
                         <div
                           key={index}
-                          className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 hover:border-green-500/30 transition-all duration-200"
+                          className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 hover:border-green-100/50 transition-all duration-200"
                         >
                           <div className="flex items-center justify-between mb-3">
                             <div>
@@ -1288,17 +1326,71 @@ export default function Dashboard() {
 
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className={`bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] px-3 sm:px-4 py-3 rounded-xl hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-all duration-200 hover:scale-105 ${
+                  className={`relative group cursor-pointer overflow-hidden px-4 sm:px-5 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 ${
                     image
-                      ? "border-[var(--color-primary)] text-[var(--color-primary)]"
-                      : ""
+                      ? "bg-gradient-to-r from-green-500/20 to-emerald-500/20 border-2 border-green-500/40 text-green-400 shadow-lg shadow-green-500/20"
+                      : "bg-gradient-to-r from-[var(--color-primary)]/10 to-[#0ea5e9]/10 border-2 border-[var(--color-primary)]/30 text-[var(--color-primary)] hover:bg-gradient-to-r hover:from-[var(--color-primary)]/20 hover:to-[#0ea5e9]/20 hover:border-[var(--color-primary)]/50 hover:shadow-lg hover:shadow-[var(--color-primary)]/20"
                   }`}
                   title={
                     image ? "Replace Image (1 max)" : "Upload Image (1 max)"
                   }
                   disabled={isLoading}
                 >
-                  {image ? "🖼️" : "📷"}
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`w-5 h-5 transition-all duration-300 ${
+                        image ? "scale-110" : "group-hover:scale-110"
+                      }`}
+                    >
+                      {image ? (
+                        <svg
+                          className="w-full h-full"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 002 2z"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          className="w-full h-full"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                    <span className="text-sm font-medium hidden sm:inline">
+                      {image ? "Replace" : "Upload"}
+                    </span>
+                  </div>
+
+                  {/* Subtle glow effect */}
+                  <div
+                    className={`absolute inset-0 rounded-xl opacity-0 transition-opacity duration-300 ${
+                      image
+                        ? "bg-gradient-to-r from-green-500/10 to-emerald-500/10"
+                        : "bg-gradient-to-r from-[var(--color-primary)]/10 to-[#0ea5e9]/10"
+                    } group-hover:opacity-100`}
+                  ></div>
                 </button>
 
                 <button
