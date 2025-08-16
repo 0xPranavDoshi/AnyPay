@@ -7,14 +7,14 @@ export interface User {
 export enum TokenType {
   USDC = 0,
   CCIP_BNM = 1,
-  CCIP_LNM = 2
+  CCIP_LNM = 2,
 }
 
 export enum PaymentStatus {
   PENDING = "pending",
-  PROCESSING = "processing", 
+  PROCESSING = "processing",
   COMPLETED = "completed",
-  FAILED = "failed"
+  FAILED = "failed",
 }
 
 export interface CrossChainPayment {

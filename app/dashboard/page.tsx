@@ -5,6 +5,9 @@ import { getCookie } from "@/utils/cookie";
 import { CrossChainPayment, PaymentStatus, TokenType } from "@/lib/interface";
 import PaymentModal from "@/components/PaymentModal";
 import TransactionModal from "@/components/TransactionModal";
+import { CdpClient } from "@coinbase/cdp-sdk";
+import { privateKeyToAccount, toAccount } from "viem/accounts";
+import { wrapFetchWithPayment, decodeXPaymentResponse } from "x402-fetch";
 
 interface User {
   username: string;
@@ -33,7 +36,9 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"owe" | "owed">("owe");
   const [user, setUser] = useState<User | null>(null);
-  const [crossChainPayments, setCrossChainPayments] = useState<CrossChainPayment[]>([]);
+  const [crossChainPayments, setCrossChainPayments] = useState<
+    CrossChainPayment[]
+  >([]);
   const [paymentsLoading, setPaymentsLoading] = useState(true);
   const [paymentModal, setPaymentModal] = useState<{
     isOpen: boolean;
@@ -79,92 +84,6 @@ export default function Dashboard() {
     }
   };
 
-  // Check for pending messages after returning from payment gateway
-  useEffect(() => {
-    const chatData = sessionStorage.getItem("chatData");
-    if (chatData) {
-      try {
-        const data = JSON.parse(chatData);
-
-        // Restore the complete chat history
-        if (data.chatHistory) {
-          setChatHistory(data.chatHistory);
-        }
-
-        // Add the pending user message to chat history
-        if (data.pendingMessage) {
-          const userMessage: ChatMessage = {
-            role: "user",
-            content: data.pendingMessage.content,
-            image: data.pendingMessage.image,
-          };
-          setChatHistory((prev) => [...prev, userMessage]);
-
-          // Process the message (this would normally happen after payment)
-          processMessageAfterPayment(data.pendingMessage);
-        }
-
-        // Clear the stored chat data
-        sessionStorage.removeItem("chatData");
-      } catch (error) {
-        console.error("Error processing stored chat data:", error);
-      }
-    } else {
-      // Fallback: check for old format (backward compatibility)
-      const pendingMessage = sessionStorage.getItem("pendingMessage");
-      if (pendingMessage) {
-        try {
-          const messageData = JSON.parse(pendingMessage);
-
-          // Add the user message to chat history
-          const userMessage: ChatMessage = {
-            role: "user",
-            content: messageData.content,
-            image: messageData.image,
-          };
-          setChatHistory((prev) => [...prev, userMessage]);
-
-          // Clear the pending message
-          sessionStorage.removeItem("pendingMessage");
-
-          // Process the message
-          processMessageAfterPayment(messageData);
-        } catch (error) {
-          console.error("Error processing pending message:", error);
-        }
-      }
-    }
-  }, []);
-
-  // Function to process message after payment completion
-  const processMessageAfterPayment = async (messageData: {
-    content: string;
-    image?: string;
-  }) => {
-    setIsLoading(true);
-
-    try {
-      // TODO: Implement actual AI bot response
-      // For now, simulate a response
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      const botResponse: ChatMessage = {
-        role: "bot",
-        content: `Payment completed! I've processed your ${
-          messageData.image ? "receipt image and " : ""
-        }message: "${
-          messageData.content || "receipt"
-        }"\n\nThis appears to be a valid receipt. I'll help you split this expense with your group!`,
-      };
-
-      setChatHistory((prev) => [...prev, botResponse]);
-    } catch (error) {
-      console.error("Error getting bot response:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   // Mock data for now - will be replaced with real payment data
   const youOwe = [
     { user: { username: "alice", walletAddress: "0x123..." }, amount: 45.67 },
@@ -182,7 +101,7 @@ export default function Dashboard() {
     setPaymentModal({
       isOpen: true,
       recipientUser: targetUser,
-      amount
+      amount,
     });
   };
 
@@ -199,28 +118,28 @@ export default function Dashboard() {
         isProcessing: true,
         status: "Connecting to wallet...",
         step: 1,
-        totalSteps: 4
+        totalSteps: 4,
       });
 
       // Step 1: Connect wallet & switch chain (simulated)
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setTransactionState(prev => ({
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      setTransactionState((prev) => ({
         ...prev,
         status: "Requesting token approval...",
-        step: 2
+        step: 2,
       }));
 
       // Step 2: Token approval (simulated)
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setTransactionState(prev => ({
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      setTransactionState((prev) => ({
         ...prev,
         status: "Confirming cross-chain transaction...",
-        step: 3
+        step: 3,
       }));
 
       // Step 3: Transaction signing and submission
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
       const response = await fetch("/api/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -230,30 +149,30 @@ export default function Dashboard() {
           sourceChain: paymentData.sourceChain,
           destinationChain: paymentData.destinationChain,
           tokenType: paymentData.tokenType,
-          signedTxData: "0x..." // Would contain actual signed transaction
-        })
+          signedTxData: "0x...", // Would contain actual signed transaction
+        }),
       });
 
       const result = await response.json();
-      
+
       if (result.success) {
-        setTransactionState(prev => ({
+        setTransactionState((prev) => ({
           ...prev,
           status: "Transaction confirmed!",
           step: 4,
-          txHash: result.txHash
+          txHash: result.txHash,
         }));
-        
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
+
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
         setPaymentModal({ isOpen: false });
         setTransactionState({
           isProcessing: false,
           status: "",
           step: 0,
-          totalSteps: 4
+          totalSteps: 4,
         });
-        
+
         if (user) {
           fetchUserPayments(user.walletAddress);
         }
@@ -266,14 +185,14 @@ export default function Dashboard() {
         isProcessing: false,
         status: "Transaction failed",
         step: 0,
-        totalSteps: 4
+        totalSteps: 4,
       });
       setTimeout(() => {
         setTransactionState({
           isProcessing: false,
           status: "",
           step: 0,
-          totalSteps: 4
+          totalSteps: 4,
         });
       }, 3000);
     }
@@ -301,30 +220,80 @@ export default function Dashboard() {
   const handleSendMessage = async () => {
     if ((!input.trim() && !image) || isLoading) return;
 
-    // Store the complete chat history and pending message in sessionStorage
-    const chatData = {
-      chatHistory: chatHistory,
-      pendingMessage: {
-        content: input,
-        image: image,
-        timestamp: Date.now(),
-      },
-    };
-    sessionStorage.setItem("chatData", JSON.stringify(chatData));
-
-    // Clear the input fields and image
+    const userMessage: ChatMessage = { role: "user", content: input, image };
+    setChatHistory((prev) => [...prev, userMessage]);
     setInput("");
     setImage(undefined);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    setIsLoading(true);
 
-    // Redirect to X402 gateway with message data as URL parameters
-    const params = new URLSearchParams();
-    if (input.trim()) params.append("message", input.trim());
-    if (image) params.append("image", image);
-    params.append("returnUrl", "/dashboard");
+    try {
+      // Fetch Agent API Using X402
+      // dotenv.config();
 
-    // Redirect to payment gateway
-    window.location.href = `/x402-gateway?${params.toString()}`;
+      // console.log(process.versions);
+
+      // const cdp = new CdpClient({
+      //   apiKeyId: process.env.NEXT_PUBLIC_CDP_API_KEY_ID,
+      //   apiKeySecret: process.env.NEXT_PUBLIC_CDP_API_KEY_SECRET,
+      //   walletSecret: process.env.NEXT_PUBLIC_CDP_WALLET_SECRET,
+      // });
+      //  const cdpAccount = await cdp.evm.createAccount();
+
+      // const importedAccount = await cdp.evm.importAccount({
+      //   privateKey: process.env.WALLET_PRIV_KEY as `0x${string}`,
+      //   name: "imported-account",
+      // });
+      // const account = toAccount(importedAccount);
+      const account = privateKeyToAccount(
+        process.env.NEXT_PUBLIC_WALLET_PRIV_KEY as `0x${string}`
+      );
+      console.log("account", account);
+
+      const fetchWithPayment = wrapFetchWithPayment(fetch, account);
+
+      const response = await fetchWithPayment("/api/agent", {
+        method: "POST",
+        body: JSON.stringify({
+          prompt: input,
+          image: image,
+          sessionID: "",
+          refresh_session: true,
+        }),
+      });
+
+      const body = await response.json();
+      console.log("body", body);
+
+      const paymentResponse = decodeXPaymentResponse(
+        response.headers.get("x-payment-response")!
+      );
+      console.log("paymentResponse", paymentResponse);
+
+      if (!paymentResponse.success) {
+        console.log("paymentResponse failed", paymentResponse);
+        alert("X402 Payment failed, please try again");
+        return;
+      }
+
+      // TODO: Implement actual AI bot response
+      // For now, simulate a response
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const botResponse: ChatMessage = {
+        role: "bot",
+        content: `I've processed your ${
+          image ? "receipt image and " : ""
+        }message: "${
+          input || "receipt"
+        }"\n\nThis appears to be a valid receipt. I'll help you split this expense with your group!`,
+      };
+
+      setChatHistory((prev) => [...prev, botResponse]);
+    } catch (error) {
+      console.error("Error getting bot response:", error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -657,7 +626,9 @@ export default function Dashboard() {
       <PaymentModal
         isOpen={paymentModal.isOpen}
         onClose={() => setPaymentModal({ isOpen: false })}
-        recipientUser={paymentModal.recipientUser || { username: "", walletAddress: "" }}
+        recipientUser={
+          paymentModal.recipientUser || { username: "", walletAddress: "" }
+        }
         amount={paymentModal.amount || 0}
         onConfirm={handlePaymentConfirm}
       />
