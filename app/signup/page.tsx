@@ -1,8 +1,114 @@
 "use client";
 
 import Image from "next/image";
+import { useState } from "react";
+
+// Extend Window interface to include ethereum
+declare global {
+  interface Window {
+    ethereum?: {
+      request: (args: { method: string; params?: any[] }) => Promise<any>;
+      on: (event: string, callback: (params: any) => void) => void;
+      removeListener: (event: string, callback: (params: any) => void) => void;
+    };
+  }
+}
 
 export default function SignUp() {
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [walletAddress, setWalletAddress] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const connectWallet = async () => {
+    try {
+      setIsConnecting(true);
+      setError("");
+
+      // Check if MetaMask is installed
+      if (typeof window.ethereum !== "undefined") {
+        // Request account access
+        const accounts = await window.ethereum.request({
+          method: "eth_requestAccounts",
+        });
+        const account = accounts[0];
+
+        if (account) {
+          setWalletAddress(account);
+          console.log("Wallet connected:", account);
+        }
+      } else {
+        // MetaMask not installed, prompt user to install
+        setError("Please install MetaMask to connect your wallet!");
+      }
+    } catch (error) {
+      console.error("Error connecting wallet:", error);
+      setError("Failed to connect wallet. Please try again.");
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleSignUp = async () => {
+    if (!username.trim()) {
+      setError("Please enter a username");
+      return;
+    }
+
+    if (!password.trim()) {
+      setError("Please enter a password");
+      return;
+    }
+
+    if (!walletAddress) {
+      setError("Please connect your wallet first");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setError("");
+      setSuccess("");
+
+      const response = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: username.trim(),
+          password: password.trim(),
+          walletAddress: walletAddress,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Signup failed");
+      }
+
+      setSuccess("Account created successfully! Redirecting...");
+
+      // Redirect to login page after a short delay
+      setTimeout(() => {
+        window.location.href = "/dashboard";
+      }, 2000);
+    } catch (error) {
+      console.error("Signup error:", error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Signup failed. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] font-['Poppins',Inter,'SF_Pro_Display',system-ui,sans-serif]">
       {/* Navigation */}
@@ -50,7 +156,7 @@ export default function SignUp() {
           <div className="absolute top-52 right-1/2 w-2.5 h-2.5 bg-[var(--color-primary)]/35 rounded-full animate-pulse delay-1000"></div>
 
           {/* Diagonal lines */}
-          <div className="absolute top-20 left-1/3 w-20 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/15 to-transparent transform rotate-45 origin-left"></div>
+          <div className="absolute top-20 left-1/3 w-20 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/20 to-transparent transform rotate-45 origin-left"></div>
           <div className="absolute top-32 right-1/4 w-16 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/15 to-transparent transform -rotate-45 origin-right"></div>
         </div>
 
@@ -60,10 +166,23 @@ export default function SignUp() {
             <h1 className="animate-fade-in-up text-[clamp(2rem,5vw,3rem)] font-extrabold mb-4 leading-tight tracking-tight">
               <span className="text-[var(--color-text-primary)] relative">
                 Welcome to AnyPay
-                <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-32 h-1 bg-gradient-to-r from-transparent via-[var(--color-primary)]/30 to-transparent"></div>
+                <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-32 h-1 bg-gradient-to-r from-transparent via-[var(--color-primary)]/20 to-transparent"></div>
               </span>
             </h1>
           </div>
+
+          {/* Error and Success Messages */}
+          {error && (
+            <div className="animate-fade-in-up mb-4 p-3 bg-red-500/20 border border-red-500/30 text-red-400 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
+
+          {success && (
+            <div className="animate-fade-in-up mb-4 p-3 bg-green-500/20 border border-green-500/30 text-green-400 rounded-lg text-sm">
+              {success}
+            </div>
+          )}
 
           {/* Sign Up Form */}
           <div className="animate-fade-in-up stagger-2 bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-3xl p-6 mb-6">
@@ -78,6 +197,8 @@ export default function SignUp() {
               <input
                 type="text"
                 id="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 placeholder="Enter your username"
                 className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 text-lg transition-all duration-300 focus:border-[var(--color-primary)] focus:shadow-lg focus:shadow-[var(--color-primary)]/20 focus:outline-none focus:scale-[1.02]"
               />
@@ -94,33 +215,58 @@ export default function SignUp() {
               <input
                 type="password"
                 id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 text-lg transition-all duration-300 focus:border-[var(--color-primary)] focus:shadow-lg focus:shadow-[var(--color-primary)]/20 focus:outline-none focus:scale-[1.02]"
               />
             </div>
 
             {/* Wallet Connection */}
-            <div className="mb-4">
+            <div className="mb-6">
               <h3 className="text-[var(--color-text-primary)] font-semibold mb-3 text-left">
                 Connect Your Wallet
               </h3>
-              <button className="group relative overflow-hidden w-full bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary)]/80 text-white px-8 py-3 rounded-xl font-bold text-lg hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--color-primary)]/30">
-                <span className="relative z-10 flex items-center justify-center gap-3">
-                  <Image
-                    src="/partners/coinbase.png"
-                    alt="Coinbase"
-                    width={24}
-                    height={24}
-                    className="object-contain"
-                  />
-                  Connect Coinbase Wallet
+              {walletAddress ? (
+                <div className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-primary)] text-[var(--color-primary)] rounded-xl px-4 py-3 text-sm font-medium text-center">
+                  Connected: {walletAddress.slice(0, 6)}...
+                  {walletAddress.slice(-4)}
+                </div>
+              ) : (
+                <button
+                  onClick={connectWallet}
+                  disabled={isConnecting}
+                  className="group relative cursor-pointer overflow-hidden w-full bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary)]/80 text-white px-8 py-3 rounded-xl font-bold text-lg hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--color-primary)]/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span className="relative z-10 flex items-center justify-center gap-3">
+                    <span className="text-xl">🔗</span>
+                    {isConnecting ? "Connecting..." : "Connect Wallet"}
+                  </span>
+                  <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/90 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                </button>
+              )}
+              <p className="text-[var(--color-text-muted)] text-sm mt-2 text-left">
+                Connect any Web3 wallet to start managing group expenses
+              </p>
+            </div>
+
+            {/* Sign Up Button */}
+            <div className="mb-4">
+              <button
+                onClick={handleSignUp}
+                disabled={
+                  isSubmitting ||
+                  !username.trim() ||
+                  !walletAddress ||
+                  !password.trim()
+                }
+                className="group cursor-pointer relative overflow-hidden w-full bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary)]/80 text-white px-8 py-4 rounded-xl font-bold text-lg hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--color-primary)]/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              >
+                <span className="relative z-10">
+                  {isSubmitting ? "Creating Account..." : "Sign Up"}
                 </span>
                 <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/90 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               </button>
-              <p className="text-[var(--color-text-muted)] text-sm mt-2 text-left">
-                Securely connect your Coinbase wallet to start managing group
-                expenses
-              </p>
             </div>
           </div>
 

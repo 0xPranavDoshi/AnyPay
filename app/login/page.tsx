@@ -1,8 +1,59 @@
 "use client";
 
-import Image from "next/image";
+import { useState } from "react";
 
 export default function Login() {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleLogin = async () => {
+    if (!username.trim()) {
+      setError("Please enter a username");
+      return;
+    }
+
+    if (!password.trim()) {
+      setError("Please enter a password");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setError("");
+
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: username.trim(),
+          password: password.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Login failed");
+      }
+
+      // Login successful - redirect to dashboard
+      window.location.href = "/dashboard";
+    } catch (error) {
+      console.error("Login error:", error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Login failed. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] font-['Poppins',Inter,'SF_Pro_Display',system-ui,sans-serif]">
       {/* Navigation */}
@@ -50,7 +101,7 @@ export default function Login() {
           <div className="absolute top-52 right-1/2 w-2.5 h-2.5 bg-[var(--color-primary)]/35 rounded-full animate-pulse delay-1000"></div>
 
           {/* Diagonal lines */}
-          <div className="absolute top-20 left-1/3 w-20 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/15 to-transparent transform rotate-45 origin-left"></div>
+          <div className="absolute top-20 left-1/3 w-20 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/20 to-transparent transform rotate-45 origin-left"></div>
           <div className="absolute top-32 right-1/4 w-16 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/15 to-transparent transform -rotate-45 origin-right"></div>
         </div>
 
@@ -65,6 +116,13 @@ export default function Login() {
             </h1>
           </div>
 
+          {/* Error Messages */}
+          {error && (
+            <div className="animate-fade-in-up mb-4 p-3 bg-red-500/20 border border-red-500/30 text-red-400 rounded-lg text-sm">
+              {error}
+            </div>
+          )}
+
           {/* Login Form */}
           <div className="animate-fade-in-up stagger-2 bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-3xl p-6 mb-6">
             {/* Username Field */}
@@ -78,6 +136,8 @@ export default function Login() {
               <input
                 type="text"
                 id="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 placeholder="Enter your username"
                 className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 text-lg transition-all duration-300 focus:border-[var(--color-primary)] focus:shadow-lg focus:shadow-[var(--color-primary)]/20 focus:outline-none focus:scale-[1.02]"
               />
@@ -94,6 +154,8 @@ export default function Login() {
               <input
                 type="password"
                 id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 text-lg transition-all duration-300 focus:border-[var(--color-primary)] focus:shadow-lg focus:shadow-[var(--color-primary)]/20 focus:outline-none focus:scale-[1.02]"
               />
@@ -101,8 +163,14 @@ export default function Login() {
 
             {/* Login Button */}
             <div className="mb-4">
-              <button className="group relative overflow-hidden w-full bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary)]/80 text-white px-8 py-3 rounded-xl font-bold text-lg hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--color-primary)]/30">
-                <span className="relative z-10">Sign In</span>
+              <button
+                onClick={handleLogin}
+                disabled={isSubmitting || !username.trim() || !password.trim()}
+                className="group relative overflow-hidden w-full bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary)]/80 text-white px-8 py-3 rounded-xl font-bold text-lg hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--color-primary)]/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="relative z-10">
+                  {isSubmitting ? "Signing In..." : "Sign In"}
+                </span>
                 <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/90 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               </button>
             </div>
@@ -111,7 +179,7 @@ export default function Login() {
           {/* Additional Info */}
           <div className="animate-fade-in-up stagger-3">
             <p className="text-[var(--color-text-secondary)] text-base">
-              Don{"'"}t have an account?{" "}
+              Don't have an account?{" "}
               <span className="text-[var(--color-primary)] cursor-pointer hover:underline font-semibold">
                 <a href="/signup">Sign up here</a>
               </span>
