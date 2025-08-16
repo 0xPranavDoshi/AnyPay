@@ -9,9 +9,12 @@ export default function Home() {
           <div className="animate-bounce-in text-2xl font-bold text-[var(--color-primary)] tracking-tight">
             AnyPay
           </div>
-          <button className="bg-[var(--color-primary)] text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity duration-200 animate-scale-in hover:scale-105 transform">
+          <a
+            href="/signup"
+            className="bg-[var(--color-primary)] cursor-pointer text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity duration-200 animate-scale-in hover:scale-105 transform"
+          >
             Launch App
-          </button>
+          </a>
         </div>
       </nav>
 

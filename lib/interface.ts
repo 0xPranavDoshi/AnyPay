@@ -1,9 +1,9 @@
-interface User {
+export interface User {
   username: string;
   walletAddress: string;
 }
 
-interface Payment {
+export interface Payment {
   payer: User;
   totalAmount: number;
   owers: {
