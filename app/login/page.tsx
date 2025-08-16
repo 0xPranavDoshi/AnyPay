@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { setCookie } from "@/utils/cookie";
 
 export default function Login() {
@@ -41,9 +42,9 @@ export default function Login() {
         throw new Error(data.error || "Login failed");
       }
 
-  // Login successful - store user in cookie and redirect
-  setCookie("user", JSON.stringify(data.user));
-  window.location.href = "/dashboard";
+      // Login successful - store user in cookie and redirect
+      setCookie("user", JSON.stringify(data.user));
+      window.location.href = "/dashboard";
     } catch (error) {
       console.error("Login error:", error);
       setError(
@@ -61,8 +62,17 @@ export default function Login() {
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-[rgba(15,15,35,0.9)] backdrop-blur-[20px] border-b border-[var(--color-border)] px-8 py-4">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="animate-bounce-in text-2xl font-bold text-[var(--color-primary)] tracking-tight">
-            AnyPay
+          <div className="animate-bounce-in flex items-center gap-3">
+            <Image
+              src="/anypay-logo.svg"
+              alt="AnyPay Logo"
+              width={60}
+              height={60}
+              className="h-10 w-10 hover:scale-105 transition-transform duration-300"
+            />
+            <span className="text-2xl font-bold text-[var(--color-primary)] tracking-tight">
+              AnyPay
+            </span>
           </div>
           <button
             onClick={() => window.history.back()}

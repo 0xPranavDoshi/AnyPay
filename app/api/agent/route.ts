@@ -53,7 +53,11 @@ Be friendly, concise, and stay focused on bill splitting. Start by clearly stati
 
     WAITING_FOR_PEOPLE_COUNT: `Continue helping with bill splitting. Ask the user to @ mention all the people involved in this split (they can type @ to see available users and select them).`,
 
-    WAITING_FOR_USERNAMES: `The users have been selected! ${data.users ? `People involved: ${data.users.map(u => u.username).join(', ')}.` : ''} Now ask who paid the bill and how they want to split it.`,
+    WAITING_FOR_USERNAMES: `The users have been selected! ${
+      data.users
+        ? `People involved: ${data.users.map((u) => u.username).join(", ")}.`
+        : ""
+    } Now ask who paid the bill and how they want to split it.`,
 
     WAITING_FOR_PAYER: `Ask who paid the bill from the list of people provided. Present the options clearly and ask them to specify which person paid.`,
 
@@ -67,12 +71,21 @@ Explain each option briefly and ask them to choose.`,
 
     WAITING_FOR_CONFIRMATION: `Present the settlement plan clearly showing who owes who how much money. 
     
-${data.settlement ? 
-  `Current settlement plan:
-${data.settlement.map(p => `• ${p.sender.username} owes ${p.recipient.username}: $${p.totalAmount.toFixed(2)}`).join('\n')}
+${
+  data.settlement
+    ? `Current settlement plan:
+${data.settlement
+  .map(
+    (p) =>
+      `• ${p.sender.username} owes ${
+        p.recipient.username
+      }: $${p.totalAmount.toFixed(2)}`
+  )
+  .join("\n")}
 
-Total amount being split: $${data.totalAmount?.toFixed(2) || '0.00'}` : 
-  'Settlement plan will be generated once all information is provided.'}
+Total amount being split: $${data.totalAmount?.toFixed(2) || "0.00"}`
+    : "Settlement plan will be generated once all information is provided."
+}
 
 Ask for confirmation before saving to the system.`,
 
@@ -143,19 +156,19 @@ function determineConversationState(
 
   // Only move from INITIAL if receipt total has been parsed
   if (!billData.totalAmount) return "INITIAL";
-  
+
   // If users were just selected via @ mentions, move to the appropriate next state
   if (justSelectedUsers && justSelectedUsers.length > 0) {
     return "WAITING_FOR_USERNAMES"; // This will show the selected users and ask for payer
   }
-  
+
   // Check if we have users from conversation or just selected
   const hasUsers = billData.users && billData.users.length > 0;
-  
+
   if (!hasUsers) {
     return "WAITING_FOR_PEOPLE_COUNT"; // Ask them to @ mention people
   }
-  
+
   // We have users, now check progression
   if (!billData.payer) return "WAITING_FOR_PAYER";
   if (!billData.splitMethod) return "WAITING_FOR_SPLIT_METHOD";
@@ -165,9 +178,12 @@ function determineConversationState(
 }
 
 // Extract bill splitting data from conversation history
-function extractBillSplittingData(history: any[], justSelectedUsers?: User[]): BillSplittingData {
+function extractBillSplittingData(
+  history: any[],
+  justSelectedUsers?: User[]
+): BillSplittingData {
   const data: BillSplittingData = {};
-  
+
   // If users were just selected via @ mentions, use them
   if (justSelectedUsers && justSelectedUsers.length > 0) {
     data.users = justSelectedUsers;
@@ -244,7 +260,13 @@ function extractBillSplittingData(history: any[], justSelectedUsers?: User[]): B
   }
 
   // Auto-generate settlement if we have all required information
-  if (data.totalAmount && data.users && data.payer && data.splitMethod && !data.settlement) {
+  if (
+    data.totalAmount &&
+    data.users &&
+    data.payer &&
+    data.splitMethod &&
+    !data.settlement
+  ) {
     data.settlement = generateSettlement(data);
   }
 
@@ -279,7 +301,10 @@ function generateSettlement(data: BillSplittingData): Payment[] | null {
 }
 
 // Validate settlement sums consistency (sum of all 1:1 equals total)
-function validateSettlement(settlement: Payment[], totalAmount: number): boolean {
+function validateSettlement(
+  settlement: Payment[],
+  totalAmount: number
+): boolean {
   const epsilon = 0.01; // tolerance for floating point arithmetic
   const summed = settlement.reduce((acc, p) => acc + p.totalAmount, 0);
   return Math.abs(summed - totalAmount) <= epsilon;
@@ -287,13 +312,22 @@ function validateSettlement(settlement: Payment[], totalAmount: number): boolean
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, image, sessionID, refresh_session, stream = false, users } = await req.json();
+    const {
+      prompt,
+      image,
+      sessionID,
+      refresh_session,
+      stream = false,
+      users,
+    } = await req.json();
 
     const userCookie = getCookie("user");
 
     if (!prompt && !image) {
       return NextResponse.json(
-        { error: "Missing required fields: either prompt or image are required" },
+        {
+          error: "Missing required fields: either prompt or image are required",
+        },
         { status: 400 }
       );
     }
@@ -301,7 +335,10 @@ export async function POST(req: NextRequest) {
     const userCookieValue = await userCookie;
     if (!userCookieValue) {
       return NextResponse.json(
-        { error: "Missing required fields: user not logged in/cookie not detected" },
+        {
+          error:
+            "Missing required fields: user not logged in/cookie not detected",
+        },
         { status: 400 }
       );
     }
@@ -424,27 +461,34 @@ export async function POST(req: NextRequest) {
 
     // 5. Check if user is confirming settlement
     let paymentIds: string[] | undefined;
-    const updatedBillData = extractBillSplittingData([
-      ...session.history,
-      { role: "user", parts: [{ text: prompt }], timestamp: new Date() },
-      {
-        role: "model",
-        parts: [{ text: geminiResponse.text }],
-        timestamp: new Date(),
-      },
-    ], users);
+    const updatedBillData = extractBillSplittingData(
+      [
+        ...session.history,
+        { role: "user", parts: [{ text: prompt }], timestamp: new Date() },
+        {
+          role: "model",
+          parts: [{ text: geminiResponse.text }],
+          timestamp: new Date(),
+        },
+      ],
+      users
+    );
 
     // Check if user is confirming settlement (more flexible confirmation detection)
-    const isConfirming = conversationState === "WAITING_FOR_CONFIRMATION" && 
-      (prompt.toLowerCase().includes("confirm") || 
-       prompt.toLowerCase().includes("yes") || 
-       prompt.toLowerCase().includes("looks good") ||
-       prompt.toLowerCase().includes("correct") ||
-       prompt.toLowerCase().includes("save"));
-    
+    const isConfirming =
+      conversationState === "WAITING_FOR_CONFIRMATION" &&
+      (prompt.toLowerCase().includes("confirm") ||
+        prompt.toLowerCase().includes("yes") ||
+        prompt.toLowerCase().includes("looks good") ||
+        prompt.toLowerCase().includes("correct") ||
+        prompt.toLowerCase().includes("save"));
+
     if (isConfirming) {
       const settlement = generateSettlement(updatedBillData);
-      if (!settlement || !validateSettlement(settlement, updatedBillData.totalAmount || 0)) {
+      if (
+        !settlement ||
+        !validateSettlement(settlement, updatedBillData.totalAmount || 0)
+      ) {
         return NextResponse.json(
           { error: "Agent is unreachable at the moment" },
           { status: 422 }
@@ -518,40 +562,48 @@ export async function POST(req: NextRequest) {
         start(controller) {
           // Send the response in chunks to simulate streaming
           const text = geminiResponse.text || "";
-          const words = text.split(' ');
-          let currentText = '';
-          
+          const words = text.split(" ");
+          let currentText = "";
+
           const sendChunk = (index: number) => {
             if (index >= words.length) {
               // Send final metadata and close stream
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                type: 'metadata',
-                ...responseData
-              })}\n\n`));
-              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    type: "metadata",
+                    ...responseData,
+                  })}\n\n`
+                )
+              );
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
               controller.close();
               return;
             }
-            
-            currentText += (index > 0 ? ' ' : '') + words[index];
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-              type: 'content',
-              content: currentText
-            })}\n\n`));
-            
+
+            currentText += (index > 0 ? " " : "") + words[index];
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  type: "content",
+                  content: currentText,
+                })}\n\n`
+              )
+            );
+
             // Continue with next word after a small delay
             setTimeout(() => sendChunk(index + 1), 50);
           };
-          
+
           sendChunk(0);
-        }
+        },
       });
 
       return new Response(readableStream, {
         headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
         },
       });
     } else {
