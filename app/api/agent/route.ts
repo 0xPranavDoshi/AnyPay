@@ -234,43 +234,22 @@ function validateSettlement(settlement: Payment): boolean {
   return close(sumSenders, total) && close(sumRecipients, total);
 }
 
-// Helper: parse data URL into inlineData
-function parseDataUrl(
-  dataUrl: string
-): { mimeType: string; data: string } | null {
-  try {
-    const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
-    if (!match) return null;
-    return { mimeType: match[1], data: match[2] };
-  } catch {
-    return null;
-  }
-}
-
-// Retrieve the most recent inline image from history as a data URL
-function getLastImageDataUrl(history: any[]): string | undefined {
-  for (let i = history.length - 1; i >= 0; i--) {
-    const msg = history[i];
-    const parts = Array.isArray(msg?.parts) ? msg.parts : [];
-    for (let j = parts.length - 1; j >= 0; j--) {
-      const inline = parts[j]?.inlineData;
-      if (inline?.mimeType && inline?.data) {
-        return `data:${inline.mimeType};base64,${inline.data}`;
-      }
-    }
-  }
-  return undefined;
-}
-
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, sessionID, image, refresh_session } = await req.json();
+    const { prompt, image, sessionID, refresh_session} = await req.json();
 
     const userCookie = getCookie("user");
 
-    if (!prompt || !userCookie) {
+    if (!prompt && !image) {
       return NextResponse.json(
-        { error: "Missing required fields: prompt and user_id are required" },
+        { error: "Missing required fields: either prompt or image are required" },
+        { status: 400 }
+      );
+    }
+
+    if (!userCookie) {
+      return NextResponse.json(
+        { error: "Missing required fields: user not logged in/cookie not detected" },
         { status: 400 }
       );
     }
