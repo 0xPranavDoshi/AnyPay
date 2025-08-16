@@ -5,7 +5,10 @@ export interface User {
 }
 
 export interface Payment {
-  recipient: User;
+  recipients: {
+    user: User;
+    amount: number;
+  }[];
   totalAmount: number;
   senders: {
     user: User;

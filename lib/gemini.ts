@@ -39,46 +39,22 @@ export async function callGemini(prompt: string, imageData?: string, history: Ch
 
   // Handle image data
   if (imageData) {
-    try {
-      if (typeof imageData === 'string' && imageData.startsWith('data:')) {
-        // Handle base64 data URL directly
-        currentContent.push({
-          type: 'image_url',
-          image_url: { url: imageData }
-        });
-      } else {
-        // Handle regular URL - fetch and convert to base64
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10_000);
-        const res = await fetch(imageData, { signal: controller.signal });
-        clearTimeout(timeout);
-        if (!res.ok) throw new Error(`Failed to fetch image: ${res.status} ${res.statusText}`);
-        const mimeType = res.headers.get('content-type') || 'image/jpeg';
-        const buf = Buffer.from(await res.arrayBuffer());
-        const base64Data = buf.toString('base64');
-        
-        currentContent.push({
-          type: 'image_url',
-          image_url: { url: `data:${mimeType};base64,${base64Data}` }
-        });
-      }
-    } catch (e) {
-      console.error('Image processing failed; continuing without image:', e);
-    }
+    // Do not inline base64; pass URL directly as the model expects
+    currentContent.push({ type: 'image_url', image_url: { url: imageData } });
   }
 
   // Add current message
   messages.push({ role: 'user', content: currentContent });
 
   const requestBody = {
-    model: 'google/gemini-2.0-flash-exp:free',
+    model: process.env.OPENROUTER_MODEL || 'openai/gpt-5-nano',
     messages,
     temperature: 0.7,
-    max_tokens: 1024,
+    max_tokens: 8192,
     top_p: 0.95,
   };
 
-  console.log('Calling OpenRouter with model: google/gemini-2.0-flash-exp:free');
+  console.log('Calling OpenRouter with model:', requestBody.model);
 
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
@@ -98,8 +74,31 @@ export async function callGemini(prompt: string, imageData?: string, history: Ch
 
   const result = await response.json();
 
-  // Debug logging for empty responses
-  const text = result.choices?.[0]?.message?.content || '';
+  // Robustly extract text (flatten arrays/objects)
+  let text: string = '';
+  const choice = result?.choices?.[0] ?? {};
+  const msg = choice?.message ?? {};
+  const content = msg?.content ?? choice?.content ?? choice?.text;
+  const flatten = (node: any): string[] => {
+    if (!node) return [];
+    if (typeof node === 'string') return [node];
+    if (Array.isArray(node)) return node.flatMap(flatten);
+    if (typeof node === 'object') {
+      const keys = ['text', 'content', 'value', 'output_text'];
+      const parts: string[] = [];
+      for (const k of keys) {
+        if (typeof node[k] === 'string') parts.push(node[k]);
+        else if (node[k]) parts.push(...flatten(node[k]));
+      }
+      // some providers nest under message -> content -> [ { type, text } ]
+      for (const v of Object.values(node)) {
+        if (v && typeof v === 'object') parts.push(...flatten(v));
+      }
+      return parts;
+    }
+    return [];
+  };
+  text = flatten(content).join('\n').trim();
   if (!text || text.trim() === '') {
     console.warn('OpenRouter returned empty text response');
     console.warn('Finish reason:', result.choices?.[0]?.finish_reason);
