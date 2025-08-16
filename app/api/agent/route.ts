@@ -29,14 +29,15 @@ interface BillSplittingData {
   payer?: User;
   splitMethod?: "equal" | "itemwise" | "ratio" | "custom";
   splitDetails?: any;
-  settlement?: Payment[];
+  settlement?: Payment[] | null;
 }
 
 // Get bill splitting conversation prompts
 function getBillSplittingPrompt(
   state: ConversationState,
   data: BillSplittingData,
-  userPrompt: string
+  userPrompt: string,
+  justSelectedUsers?: User[]
 ): string {
   const systemPrompts = {
     INITIAL: `You are AnyPay, an AI assistant specialized in understanding receipts and bills from images or text to help people split expenses.
@@ -46,13 +47,13 @@ If the user provided an image URL, analyze it for the bill total (look for "Tota
 Your goals:
 1. Extract the total amount reliably from image or text
 2. Provide a concise summary of the amount you found
-3. Ask how many people are splitting this bill
+3. Ask the user to @ mention all the people involved in this split (they can type @ to see available users and select them)
 
-Be friendly, concise, and stay focused on bill splitting. Start by clearly stating the total amount you identified, then ask for the number of people splitting.`,
+Be friendly, concise, and stay focused on bill splitting. Start by clearly stating the total amount you identified, then ask them to @ mention everyone who was part of this expense.`,
 
-    WAITING_FOR_PEOPLE_COUNT: `Continue helping with bill splitting. The user needs to tell you how many people are splitting the bill. Ask clearly for this information if they haven't provided it yet.`,
+    WAITING_FOR_PEOPLE_COUNT: `Continue helping with bill splitting. Ask the user to @ mention all the people involved in this split (they can type @ to see available users and select them).`,
 
-    WAITING_FOR_USERNAMES: `Now collect the usernames and wallet addresses for each person splitting the bill. You need ${data.peopleCount} people's information. Format: "username:wallet_address". Be clear about the format and ask for all at once.`,
+    WAITING_FOR_USERNAMES: `The users have been selected! ${data.users ? `People involved: ${data.users.map(u => u.username).join(', ')}.` : ''} Now ask who paid the bill and how they want to split it.`,
 
     WAITING_FOR_PAYER: `Ask who paid the bill from the list of people provided. Present the options clearly and ask them to specify which person paid.`,
 
@@ -64,7 +65,16 @@ Be friendly, concise, and stay focused on bill splitting. Start by clearly stati
 
 Explain each option briefly and ask them to choose.`,
 
-    WAITING_FOR_CONFIRMATION: `Present the settlement plan clearly showing who owes who how much money. Ask for confirmation before saving to the system.`,
+    WAITING_FOR_CONFIRMATION: `Present the settlement plan clearly showing who owes who how much money. 
+    
+${data.settlement ? 
+  `Current settlement plan:
+${data.settlement.map(p => `• ${p.sender.username} owes ${p.recipient.username}: $${p.totalAmount.toFixed(2)}`).join('\n')}
+
+Total amount being split: $${data.totalAmount?.toFixed(2) || '0.00'}` : 
+  'Settlement plan will be generated once all information is provided.'}
+
+Ask for confirmation before saving to the system.`,
 
     COMPLETED: `The bill has been successfully split and saved! Provide a summary of the settlement.`,
   };
@@ -127,14 +137,27 @@ async function upsertCumulativePayment(payment: Payment): Promise<string> {
 // Determine conversation state from session history
 function determineConversationState(
   history: any[],
-  billData: BillSplittingData
+  billData: BillSplittingData,
+  justSelectedUsers?: User[]
 ): ConversationState {
   if (history.length === 0) return "INITIAL";
 
-  if (!billData.totalAmount || !billData.peopleCount)
-    return "WAITING_FOR_PEOPLE_COUNT";
-  if (!billData.users || billData.users.length !== billData.peopleCount)
-    return "WAITING_FOR_USERNAMES";
+  // Only move from INITIAL if receipt total has been parsed
+  if (!billData.totalAmount) return "INITIAL";
+  
+  // If users were just selected via @ mentions, move to the appropriate next state
+  if (justSelectedUsers && justSelectedUsers.length > 0) {
+    return "WAITING_FOR_USERNAMES"; // This will show the selected users and ask for payer
+  }
+  
+  // Check if we have users from conversation or just selected
+  const hasUsers = billData.users && billData.users.length > 0;
+  
+  if (!hasUsers) {
+    return "WAITING_FOR_PEOPLE_COUNT"; // Ask them to @ mention people
+  }
+  
+  // We have users, now check progression
   if (!billData.payer) return "WAITING_FOR_PAYER";
   if (!billData.splitMethod) return "WAITING_FOR_SPLIT_METHOD";
   if (!billData.settlement) return "WAITING_FOR_CONFIRMATION";
@@ -143,8 +166,14 @@ function determineConversationState(
 }
 
 // Extract bill splitting data from conversation history
-function extractBillSplittingData(history: any[]): BillSplittingData {
+function extractBillSplittingData(history: any[], justSelectedUsers?: User[]): BillSplittingData {
   const data: BillSplittingData = {};
+  
+  // If users were just selected via @ mentions, use them
+  if (justSelectedUsers && justSelectedUsers.length > 0) {
+    data.users = justSelectedUsers;
+    data.peopleCount = justSelectedUsers.length;
+  }
 
   // Look for extracted data in AI responses
   for (const message of history) {
@@ -182,13 +211,15 @@ function extractBillSplittingData(history: any[]): BillSplittingData {
         data.peopleCount = parseInt(countMatch[1] || countMatch[2]);
       }
 
-      // Extract usernames and wallet addresses
-      const userMatches = text.match(/([a-zA-Z0-9_]+):([a-fA-F0-9x]+)/g);
-      if (userMatches && !data.users) {
-        data.users = userMatches.map((match) => {
-          const [username, walletAddress] = match.split(":");
-          return { username, walletAddress, password: "" }; // Password not needed for splitting
-        });
+      // Extract usernames and wallet addresses (only if not just selected via @ mentions)
+      if (!justSelectedUsers || justSelectedUsers.length === 0) {
+        const userMatches = text.match(/([a-zA-Z0-9_]+):([a-fA-F0-9x]+)/g);
+        if (userMatches && !data.users) {
+          data.users = userMatches.map((match) => {
+            const [username, walletAddress] = match.split(":");
+            return { username, walletAddress, password: "" }; // Password not needed for splitting
+          });
+        }
       }
 
       // Extract payer
@@ -211,6 +242,11 @@ function extractBillSplittingData(history: any[]): BillSplittingData {
         data.splitMethod = "ratio";
       }
     }
+  }
+
+  // Auto-generate settlement if we have all required information
+  if (data.totalAmount && data.users && data.payer && data.splitMethod && !data.settlement) {
+    data.settlement = generateSettlement(data);
   }
 
   return data;
@@ -252,7 +288,7 @@ function validateSettlement(settlement: Payment[], totalAmount: number): boolean
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, image, sessionID, refresh_session, stream = false } = await req.json();
+    const { prompt, image, sessionID, refresh_session, stream = false, users } = await req.json();
 
     const userCookie = getCookie("user");
 
@@ -292,10 +328,11 @@ export async function POST(req: NextRequest) {
 
     // 2. Extract bill splitting data and determine conversation state
     const isFirstPrompt = session.history.length === 0;
-    const billData = extractBillSplittingData(session.history);
+    const billData = extractBillSplittingData(session.history, users);
     const conversationState = determineConversationState(
       session.history,
-      billData
+      billData,
+      users
     );
 
     console.log("Conversation state:", conversationState);
@@ -344,7 +381,8 @@ export async function POST(req: NextRequest) {
     const systemPrompt = getBillSplittingPrompt(
       conversationState,
       billData,
-      prompt
+      prompt,
+      users
     );
     const enhancedPrompt = `${systemPrompt}\n\nUser: ${prompt}`;
 
@@ -395,12 +433,17 @@ export async function POST(req: NextRequest) {
         parts: [{ text: geminiResponse.text }],
         timestamp: new Date(),
       },
-    ]);
+    ], users);
 
-    if (
-      prompt.toLowerCase().includes("confirm") &&
-      conversationState === "WAITING_FOR_CONFIRMATION"
-    ) {
+    // Check if user is confirming settlement (more flexible confirmation detection)
+    const isConfirming = conversationState === "WAITING_FOR_CONFIRMATION" && 
+      (prompt.toLowerCase().includes("confirm") || 
+       prompt.toLowerCase().includes("yes") || 
+       prompt.toLowerCase().includes("looks good") ||
+       prompt.toLowerCase().includes("correct") ||
+       prompt.toLowerCase().includes("save"));
+    
+    if (isConfirming) {
       const settlement = generateSettlement(updatedBillData);
       if (!settlement || !validateSettlement(settlement, updatedBillData.totalAmount || 0)) {
         return NextResponse.json(

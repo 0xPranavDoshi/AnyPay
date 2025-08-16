@@ -10,7 +10,7 @@ import remarkGfm from "remark-gfm";
 import { CdpClient } from "@coinbase/cdp-sdk";
 import { privateKeyToAccount, toAccount } from "viem/accounts";
 import { wrapFetchWithPayment, decodeXPaymentResponse } from "x402-fetch";
-
+  
 interface User {
   username: string;
   walletAddress: string;
