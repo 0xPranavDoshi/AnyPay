@@ -286,8 +286,10 @@ export default function Dashboard() {
         body: JSON.stringify(payload),
       });
 
-      const body = await response.json();
-      console.log("body", body);
+      console.log("response:", response);
+
+      // const body = await response.json();
+      // console.log("body", body);
 
       const paymentResponse = decodeXPaymentResponse(
         response.headers.get("x-payment-response")!
@@ -313,7 +315,7 @@ export default function Dashboard() {
       // }
 
       // Handle streaming response
-      const reader = body.getReader();
+      const reader = response.body?.getReader();
       const decoder = new TextDecoder();
       let streamingContent = "";
 
