@@ -805,7 +805,7 @@ export default function Dashboard() {
             </div>
 
             {/* Tab Content */}
-            <div className="h-[520px] bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-4 overflow-y-auto">
+            <div className="flex-1 bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-4 overflow-y-auto">
               {activeTab === "owe" ? (
                 // You Owe Section
                 <div>
@@ -1118,7 +1118,7 @@ export default function Dashboard() {
             </div>
 
             {/* Chat Messages */}
-            <div className="h-[250px] bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-3 mb-3 overflow-y-auto">
+            <div className="flex-1 bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-3 mb-6 overflow-y-auto">
               {chatHistory.length === 0 ? (
                 <div className="text-center py-8 text-[var(--color-text-muted)]">
                   <div className="mb-4">
