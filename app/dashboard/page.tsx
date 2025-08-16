@@ -5,23 +5,42 @@ import { Payment } from "@/lib/interface";
 import { getCookie } from "@/utils/cookie";
 
 export default function Dashboard() {
- const [tab, setTab] = useState<"whoYouOwe" | "owedToYou">("whoYouOwe");
- const [username, setUsername] = useState<string | null>(null);
- const { youOwe, owedToYou, loading, error } = usePayments(username || "");
+	const [tab, setTab] = useState<"whoYouOwe" | "owedToYou">("whoYouOwe");
+	const [username, setUsername] = useState<string | null>(null);
+	const { youOwe, owedToYou, loading, error } = usePayments(username || "");
+	// Chat state
+	const [chatHistory, setChatHistory] = useState<{ role: "user" | "bot"; content: string }[]>([]);
+	const [input, setInput] = useState("");
 
- useEffect(() => {
-	 const userCookie = getCookie("user");
-	 if (userCookie) {
-		 try {
-			 const user = JSON.parse(userCookie);
-			 setUsername(user.username);
-		 } catch {
-			 setUsername(null);
-		 }
-	 } else {
-		 setUsername(null);
-	 }
- }, []);
+	useEffect(() => {
+		const userCookie = getCookie("user");
+		if (userCookie) {
+			try {
+				const user = JSON.parse(userCookie);
+				setUsername(user.username);
+			} catch {
+				setUsername(null);
+			}
+		} else {
+			setUsername(null);
+		}
+	}, []);
+
+	// Placeholder for the function that takes message and username and returns markdown string
+	async function getBotResponse(message: string, username: string): Promise<string> {
+		// TODO: Implement actual logic. For now, echo as markdown.
+		return `**Bot:** You said: ${message}`;
+	}
+
+	async function handleSendMessage() {
+		if (!input.trim() || !username) return;
+		const userMsg = { role: "user" as const, content: input };
+		setChatHistory(prev => [...prev, userMsg]);
+		setInput("");
+		// Get bot response
+		const botMarkdown = await getBotResponse(userMsg.content, username);
+		setChatHistory(prev => [...prev, { role: "bot", content: botMarkdown }]);
+	}
 
 	 function renderYouOwe(payments: Payment[]) {
 		 if (!username) return <div className="text-center text-lg text-red-500">No username found. Please log in.</div>;
@@ -109,9 +128,9 @@ export default function Dashboard() {
 						</div>
 				 <div className="z-10 flex flex-col items-center justify-center h-full w-full gap-8 mt-12">
 					 <h1 className="text-3xl font-bold mb-8">Hey {username || "testPerson"}</h1>
-					 <div className="flex flex-row items-start justify-center w-full gap-8">
-					 {/* Left Box with Tabs */}
-					 <div className="bg-[var(--color-bg-secondary,rgba(255,255,255,0.05))] rounded-xl shadow-lg p-8 w-full max-w-md min-h-[400px] flex flex-col">
+					   <div className="flex flex-row items-stretch justify-center w-full gap-8 h-full min-h-[400px]">
+					   {/* Left Box with Tabs */}
+					   <div className="bg-[var(--color-bg-secondary,rgba(255,255,255,0.05))] rounded-xl shadow-lg p-8 w-full max-w-md flex flex-col h-full">
 						 {/* Wallet address is hardcoded for now; remove input */}
 						<div className="flex mb-4">
 							<button
@@ -139,11 +158,43 @@ export default function Dashboard() {
 							{tab === "whoYouOwe" ? renderYouOwe(youOwe) : renderOwedToYou(owedToYou)}
 						</div>
 					</div>
-					 {/* Right Box */}
-					 <div className="bg-[var(--color-bg-secondary,rgba(255,255,255,0.05))] rounded-xl shadow-lg p-8 w-full max-w-md min-h-[400px] flex flex-col">
-						<h2 className="text-2xl font-semibold mb-4">Right Box</h2>
-						{/* Add your right box content here */}
-							 </div>
+									   {/* Right Box: Chat */}
+									   <div className="bg-[var(--color-bg-secondary,rgba(255,255,255,0.05))] rounded-xl shadow-lg p-8 w-full max-w-md flex flex-col h-full">
+										 <h2 className="text-2xl font-semibold mb-4">Chat</h2>
+										 <div className="flex-1 overflow-y-auto mb-4 space-y-4" style={{ maxHeight: 300 }}>
+											 {chatHistory.map((msg, idx) => (
+												 <div key={idx} className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
+													 <div className={`px-4 py-2 rounded-lg max-w-xs whitespace-pre-wrap ${msg.role === "user" ? "bg-[var(--color-primary)] text-white" : "bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)]"}`}>
+														 {msg.role === "user" ? msg.content : <span dangerouslySetInnerHTML={{ __html: msg.content }} />}
+													 </div>
+												 </div>
+											 ))}
+										 </div>
+										 <form
+											 className="flex gap-2 mt-auto"
+											 onSubmit={e => {
+												 e.preventDefault();
+												 if (!input.trim() || !username) return;
+												 handleSendMessage();
+											 }}
+										 >
+											 <input
+												 type="text"
+												 className="flex-1 rounded-lg border border-[var(--color-border)] px-4 py-2 bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] focus:outline-none focus:border-[var(--color-primary)]"
+												 placeholder="Type your message..."
+												 value={input}
+												 onChange={e => setInput(e.target.value)}
+												 disabled={!username}
+											 />
+											 <button
+												 type="submit"
+												 className="bg-[var(--color-primary)] text-white px-4 py-2 rounded-lg font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+												 disabled={!input.trim() || !username}
+											 >
+												 Send
+											 </button>
+										 </form>
+									 </div>
 					 </div>
 				 </div>
 			</section>
