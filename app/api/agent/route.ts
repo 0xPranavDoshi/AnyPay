@@ -101,7 +101,6 @@ async function upsertCumulativePayment(payment: Payment): Promise<string> {
         { returnDocument: "after" }
       );
       await client.close();
-      // @ts-ignore
       return (result?._id || existing._id).toString();
     } else {
       const doc = {

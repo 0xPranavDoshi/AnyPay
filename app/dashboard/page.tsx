@@ -5,6 +5,8 @@ import { getCookie, removeCookie } from "@/utils/cookie";
 import { CrossChainPayment, PaymentStatus, TokenType } from "@/lib/interface";
 import PaymentModal from "@/components/PaymentModal";
 import TransactionModal from "@/components/TransactionModal";
+import UserMentionDropdown from "@/components/UserMentionDropdown";
+import SelectedUsers from "@/components/SelectedUsers";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CdpClient } from "@coinbase/cdp-sdk";
@@ -56,16 +58,33 @@ export default function Dashboard() {
     totalSteps: number;
   }>({ isProcessing: false, status: "", step: 0, totalSteps: 4 });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [usersSelected, setUsersSelected] = useState<User[]>([]);
+
+  // Mention system state
+  const [mentionDropdown, setMentionDropdown] = useState<{
+    isOpen: boolean;
+    searchTerm: string;
+    position: { x: number; y: number };
+  }>({
+    isOpen: false,
+    searchTerm: "",
+    position: { x: 0, y: 0 },
+  });
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Get user from cookies and fetch payments on component mount
   useEffect(() => {
     const getUserData = () => {
       // Client-side cookie parsing
-      const cookies = document.cookie.split(';');
-      const userCookie = cookies.find(cookie => cookie.trim().startsWith('user='));
+      const cookies = document.cookie.split(";");
+      const userCookie = cookies.find((cookie) =>
+        cookie.trim().startsWith("user=")
+      );
       if (userCookie) {
         try {
-          const userData = JSON.parse(decodeURIComponent(userCookie.split('=')[1]));
+          const userData = JSON.parse(
+            decodeURIComponent(userCookie.split("=")[1])
+          );
           setUser(userData);
           fetchUserPayments(userData.walletAddress);
         } catch (error) {
@@ -96,11 +115,11 @@ export default function Dashboard() {
   const handleLogout = () => {
     // Remove user cookie
     removeCookie("user");
-    
+
     // Clear user state
     setUser(null);
     setCrossChainPayments([]);
-    
+
     // Redirect to home page
     window.location.href = "/";
   };
@@ -224,14 +243,14 @@ export default function Dashboard() {
     if (!file) return;
 
     // Validate file type
-    if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
+    if (!file.type.startsWith("image/")) {
+      alert("Please select an image file");
       return;
     }
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      alert('Image size must be less than 5MB');
+      alert("Image size must be less than 5MB");
       return;
     }
 
@@ -250,6 +269,66 @@ export default function Dashboard() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  // Mention system functions
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInput(value);
+
+    // Check for @ symbol to open mention dropdown
+    const atIndex = value.lastIndexOf("@");
+    if (atIndex !== -1) {
+      const searchTerm = value.slice(atIndex + 1);
+      const inputRect = inputRef.current?.getBoundingClientRect();
+
+      if (inputRect) {
+        setMentionDropdown({
+          isOpen: true,
+          searchTerm,
+          position: {
+            x: 0, // Relative to the input container
+            y: 0, // Will be positioned above the input
+          },
+        });
+      }
+    } else {
+      setMentionDropdown((prev) => ({ ...prev, isOpen: false }));
+    }
+  };
+
+  const handleSelectUser = (selectedUser: User) => {
+    // Check if user is already selected
+    if (
+      !usersSelected.find(
+        (user) => user.walletAddress === selectedUser.walletAddress
+      )
+    ) {
+      setUsersSelected((prev) => [...prev, selectedUser]);
+    }
+
+    // Replace @username with @username in input
+    const atIndex = input.lastIndexOf("@");
+    if (atIndex !== -1) {
+      const beforeAt = input.slice(0, atIndex);
+      const afterUsername = input.slice(
+        atIndex + mentionDropdown.searchTerm.length + 1
+      );
+      setInput(beforeAt + "@" + selectedUser.username + " " + afterUsername);
+    }
+
+    // Close dropdown
+    setMentionDropdown((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  const handleRemoveUser = (userToRemove: User) => {
+    setUsersSelected((prev) =>
+      prev.filter((user) => user.walletAddress !== userToRemove.walletAddress)
+    );
+  };
+
+  const closeMentionDropdown = () => {
+    setMentionDropdown((prev) => ({ ...prev, isOpen: false }));
+  };
+
   const handleSendMessage = async () => {
     if ((!input.trim() && !image) || isLoading) return;
 
@@ -263,7 +342,7 @@ export default function Dashboard() {
       content: messageContent,
       image: messageImage,
     };
-    setChatHistory(prev => [...prev, userMessage]);
+    setChatHistory((prev) => [...prev, userMessage]);
 
     // Clear the input fields and image
     setInput("");
@@ -272,10 +351,12 @@ export default function Dashboard() {
 
     try {
       // Send message to agent API with streaming
+      console.log("Metioned users are", usersSelected);
       const payload: any = {
         prompt: messageContent,
         image: messageImage,
         stream: true,
+        users: usersSelected,
       };
       // Refresh session on page load (first message after refresh)
       if (isFirstClientMessage) {
@@ -335,48 +416,51 @@ export default function Dashboard() {
 
       if (reader) {
         // Add initial bot message for streaming
-        setChatHistory(prev => [...prev, {
-          role: "bot",
-          content: "",
-        }]);
+        setChatHistory((prev) => [
+          ...prev,
+          {
+            role: "bot",
+            content: "",
+          },
+        ]);
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
           const chunk = decoder.decode(value);
-          const lines = chunk.split('\n');
+          const lines = chunk.split("\n");
 
           for (const line of lines) {
-            if (line.startsWith('data: ')) {
+            if (line.startsWith("data: ")) {
               const data = line.slice(6);
-              if (data === '[DONE]') {
+              if (data === "[DONE]") {
                 setIsLoading(false);
                 return;
               }
 
               try {
                 const parsed = JSON.parse(data);
-                if (parsed.type === 'content') {
+                if (parsed.type === "content") {
                   streamingContent = parsed.content;
                   // Update the last message (bot message) with streaming content
-                  setChatHistory(prev => {
+                  setChatHistory((prev) => {
                     const updated = [...prev];
-                    if (updated[updated.length - 1]?.role === 'bot') {
+                    if (updated[updated.length - 1]?.role === "bot") {
                       updated[updated.length - 1].content = streamingContent;
                     }
                     return updated;
                   });
-                } else if (parsed.type === 'metadata') {
+                } else if (parsed.type === "metadata") {
                   // Handle bill splitting metadata if needed
-                  console.log('Bill splitting state:', parsed.billSplitting);
+                  console.log("Bill splitting state:", parsed.billSplitting);
                   // Capture and persist server-provided sessionId for follow-ups
                   if (parsed.sessionId) {
                     setSessionId(parsed.sessionId);
                   }
                 }
               } catch (e) {
-                console.error('Error parsing streaming data:', e);
+                console.error("Error parsing streaming data:", e);
               }
             }
           }
@@ -384,10 +468,14 @@ export default function Dashboard() {
       }
     } catch (error) {
       console.error("Error sending message:", error);
-      setChatHistory(prev => [...prev, {
-        role: "bot",
-        content: "Sorry, I encountered an error processing your message. Please try again.",
-      }]);
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          role: "bot",
+          content:
+            "Sorry, I encountered an error processing your message. Please try again.",
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }
@@ -431,7 +519,7 @@ export default function Dashboard() {
                 {user.walletAddress}
               </div>
             )}
-            <button 
+            <button
               onClick={handleLogout}
               className="bg-[var(--color-primary)] text-white px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200"
             >
@@ -471,7 +559,7 @@ export default function Dashboard() {
             </div>
 
             {/* Tab Content */}
-            <div className="h-[520px] bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-6 overflow-y-auto">
+            <div className="h-[520px] bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-4 overflow-y-auto">
               {activeTab === "owe" ? (
                 // You Owe Section
                 <div>
@@ -605,7 +693,7 @@ export default function Dashboard() {
             </div>
 
             {/* Chat Messages */}
-            <div className="h-[370px] bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 mb-4 overflow-y-auto">
+            <div className="h-[250px] bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-3 mb-3 overflow-y-auto">
               {chatHistory.length === 0 ? (
                 <div className="text-center py-16 text-[var(--color-text-muted)]">
                   <div className="text-6xl mb-4">🤖</div>
@@ -646,33 +734,81 @@ export default function Dashboard() {
                         )}
                         {message.role === "bot" ? (
                           <div className="prose prose-sm max-w-none prose-invert">
-                            <ReactMarkdown 
+                            <ReactMarkdown
                               remarkPlugins={[remarkGfm]}
                               components={{
                                 // Customize markdown components for better styling
-                                h1: ({...props}) => <h1 className="text-lg font-bold mb-2" {...props} />,
-                                h2: ({...props}) => <h2 className="text-base font-bold mb-2" {...props} />,
-                                h3: ({...props}) => <h3 className="text-sm font-bold mb-1" {...props} />,
-                                p: ({...props}) => <p className="mb-2 last:mb-0" {...props} />,
-                                ul: ({...props}) => <ul className="list-disc pl-4 mb-2" {...props} />,
-                                ol: ({...props}) => <ol className="list-decimal pl-4 mb-2" {...props} />,
-                                li: ({...props}) => <li className="mb-1" {...props} />,
-                                code: ({children, ...props}) => (
-                                  <code className="bg-black/20 text-[var(--color-primary)] px-1 py-0.5 rounded text-xs" {...props}>
+                                h1: ({ ...props }) => (
+                                  <h1
+                                    className="text-lg font-bold mb-2"
+                                    {...props}
+                                  />
+                                ),
+                                h2: ({ ...props }) => (
+                                  <h2
+                                    className="text-base font-bold mb-2"
+                                    {...props}
+                                  />
+                                ),
+                                h3: ({ ...props }) => (
+                                  <h3
+                                    className="text-sm font-bold mb-1"
+                                    {...props}
+                                  />
+                                ),
+                                p: ({ ...props }) => (
+                                  <p className="mb-2 last:mb-0" {...props} />
+                                ),
+                                ul: ({ ...props }) => (
+                                  <ul
+                                    className="list-disc pl-4 mb-2"
+                                    {...props}
+                                  />
+                                ),
+                                ol: ({ ...props }) => (
+                                  <ol
+                                    className="list-decimal pl-4 mb-2"
+                                    {...props}
+                                  />
+                                ),
+                                li: ({ ...props }) => (
+                                  <li className="mb-1" {...props} />
+                                ),
+                                code: ({ children, ...props }) => (
+                                  <code
+                                    className="bg-black/20 text-[var(--color-primary)] px-1 py-0.5 rounded text-xs"
+                                    {...props}
+                                  >
                                     {children}
                                   </code>
                                 ),
-                                pre: ({...props}) => <pre className="bg-black/20 p-2 rounded text-xs overflow-x-auto mb-2" {...props} />,
-                                blockquote: ({...props}) => <blockquote className="border-l-2 border-[var(--color-primary)] pl-2 italic mb-2" {...props} />,
-                                strong: ({...props}) => <strong className="font-bold" {...props} />,
-                                em: ({...props}) => <em className="italic" {...props} />,
+                                pre: ({ ...props }) => (
+                                  <pre
+                                    className="bg-black/20 p-2 rounded text-xs overflow-x-auto mb-2"
+                                    {...props}
+                                  />
+                                ),
+                                blockquote: ({ ...props }) => (
+                                  <blockquote
+                                    className="border-l-2 border-[var(--color-primary)] pl-2 italic mb-2"
+                                    {...props}
+                                  />
+                                ),
+                                strong: ({ ...props }) => (
+                                  <strong className="font-bold" {...props} />
+                                ),
+                                em: ({ ...props }) => (
+                                  <em className="italic" {...props} />
+                                ),
                               }}
                             >
                               {message.content}
                             </ReactMarkdown>
                           </div>
                         ) : (
-                          <p className="whitespace-pre-wrap">{message.content}</p>
+                          <p className="whitespace-pre-wrap">
+                            {message.content}
+                          </p>
                         )}
                       </div>
                     </div>
@@ -692,9 +828,17 @@ export default function Dashboard() {
               )}
             </div>
 
+            {/* Selected Users */}
+            <div className="mb-3">
+              <SelectedUsers
+                users={usersSelected}
+                onRemoveUser={handleRemoveUser}
+              />
+            </div>
+
             {/* Image Preview */}
             {image && (
-              <div className="mb-4 p-4 bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl">
+              <div className="mb-3 p-3 bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-[var(--color-text-muted)]">
                     Receipt Image Ready
@@ -715,40 +859,60 @@ export default function Dashboard() {
             )}
 
             {/* Input Area */}
-            <div className="flex gap-3">
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask about your expenses or upload a receipt..."
-                className="flex-1 bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 focus:border-[var(--color-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 transition-all duration-200"
-                onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
+            <div className="flex flex-col sm:flex-row gap-3 relative">
+              <div className="flex-1 min-w-0">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={input}
+                  onChange={handleInputChange}
+                  placeholder="Ask about your expenses or upload a receipt... (Type @ to mention users)"
+                  className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 focus:border-[var(--color-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 transition-all duration-200"
+                  onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
+                />
+              </div>
+
+              <div className="flex gap-2 sm:gap-3 flex-shrink-0">
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  ref={fileInputRef}
+                  onChange={handleImageUpload}
+                />
+
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] px-3 sm:px-4 py-3 rounded-xl hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-all duration-200 hover:scale-105 ${
+                    image
+                      ? "border-[var(--color-primary)] text-[var(--color-primary)]"
+                      : ""
+                  }`}
+                  title={
+                    image ? "Replace Image (1 max)" : "Upload Image (1 max)"
+                  }
+                  disabled={isLoading}
+                >
+                  {image ? "🖼️" : "📷"}
+                </button>
+
+                <button
+                  onClick={handleSendMessage}
+                  disabled={(!input.trim() && !image) || isLoading}
+                  className="bg-[var(--color-primary)] text-white px-4 sm:px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200 hover:shadow-lg hover:shadow-[var(--color-primary)]/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 whitespace-nowrap"
+                >
+                  {isLoading ? "Sending..." : "Send"}
+                </button>
+              </div>
+
+              {/* User Mention Dropdown - Positioned relative to input container */}
+              <UserMentionDropdown
+                isOpen={mentionDropdown.isOpen}
+                searchTerm={mentionDropdown.searchTerm}
+                onSelectUser={handleSelectUser}
+                onClose={closeMentionDropdown}
+                position={mentionDropdown.position}
               />
-
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                ref={fileInputRef}
-                onChange={handleImageUpload}
-              />
-
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className={`bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] px-4 py-3 rounded-xl hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-all duration-200 hover:scale-105 ${image ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : ''}`}
-                title={image ? "Replace Image (1 max)" : "Upload Image (1 max)"}
-                disabled={isLoading}
-              >
-                {image ? '🖼️' : '📷'}
-              </button>
-
-              <button
-                onClick={handleSendMessage}
-                disabled={(!input.trim() && !image) || isLoading}
-                className="bg-[var(--color-primary)] text-white px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200 hover:shadow-lg hover:shadow-[var(--color-primary)]/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
-              >
-                {isLoading ? "Sending..." : "Send"}
-              </button>
             </div>
           </div>
         </div>
