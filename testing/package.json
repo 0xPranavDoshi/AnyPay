@@ -4,7 +4,12 @@
     "compile": "hardhat compile",
     "test": "hardhat test",
     "test:fork": "npx hardhat test --grep 'Fork'",
-    "test:no-fork": "npx hardhat test --grep '^(?!.*Fork).*$'"
+    "test:no-fork": "npx hardhat test --grep '^(?!.*Fork).*$'",
+    "deploy:all": "npx hardhat run scripts/deploy-all-chains.js",
+    "deploy:ethereum": "npx hardhat run scripts/deploy-payment-splitter.js --network ethereumSepolia",
+    "deploy:arbitrum": "npx hardhat run scripts/deploy-payment-splitter.js --network arbitrumSepolia",
+    "deploy:base": "npx hardhat run scripts/deploy-payment-splitter.js --network baseSepolia",
+    "test:cross-chain": "npx hardhat run scripts/test-cross-chain-payments.js"
   },
   "devDependencies": {
     "@chainlink/contracts": "^1.4.0",

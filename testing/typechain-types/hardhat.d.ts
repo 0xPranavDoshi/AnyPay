@@ -230,6 +230,14 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.IWETH9__factory>;
     getContractFactory(
+      name: "CrossChainExpenseSplitterPTT",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.CrossChainExpenseSplitterPTT__factory>;
+    getContractFactory(
+      name: "CrossChainPaymentSplitterPTT",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.CrossChainPaymentSplitterPTT__factory>;
+    getContractFactory(
       name: "ProgrammableTokenTransfers",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.ProgrammableTokenTransfers__factory>;
@@ -509,6 +517,16 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.IWETH9>;
     getContractAt(
+      name: "CrossChainExpenseSplitterPTT",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.CrossChainExpenseSplitterPTT>;
+    getContractAt(
+      name: "CrossChainPaymentSplitterPTT",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.CrossChainPaymentSplitterPTT>;
+    getContractAt(
       name: "ProgrammableTokenTransfers",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
@@ -736,6 +754,14 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IWETH9>;
     deployContract(
+      name: "CrossChainExpenseSplitterPTT",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.CrossChainExpenseSplitterPTT>;
+    deployContract(
+      name: "CrossChainPaymentSplitterPTT",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.CrossChainPaymentSplitterPTT>;
+    deployContract(
       name: "ProgrammableTokenTransfers",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.ProgrammableTokenTransfers>;
@@ -1014,6 +1040,16 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.IWETH9>;
+    deployContract(
+      name: "CrossChainExpenseSplitterPTT",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.CrossChainExpenseSplitterPTT>;
+    deployContract(
+      name: "CrossChainPaymentSplitterPTT",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.CrossChainPaymentSplitterPTT>;
     deployContract(
       name: "ProgrammableTokenTransfers",
       args: any[],

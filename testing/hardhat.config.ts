@@ -4,9 +4,9 @@ import "./tasks";
 import "dotenv/config";
 
 const PRIVATE_KEY: string = process.env.PRIVATE_KEY || "";
-const ETHEREUM_SEPOLIA_RPC_URL: string = process.env.ETHEREUM_SEPOLIA_RPC_URL || "";
-const ARBITRUM_SEPOLIA_RPC_URL: string = process.env.ARBITRUM_SEPOLIA_RPC_URL || "";
-const BASE_SEPOLIA_RPC_URL: string = process.env.BASE_SEPOLIA_RPC_URL || "";
+const ETHEREUM_SEPOLIA_RPC_URL: string = process.env.ETHEREUM_SEPOLIA_RPC || "";
+const ARBITRUM_SEPOLIA_RPC_URL: string = process.env.ARBITRUM_SEPOLIA_RPC || "";
+const BASE_SEPOLIA_RPC_URL: string = process.env.BASE_SEPOLIA_RPC || "";
 
 const config: HardhatUserConfig = {
   solidity: {

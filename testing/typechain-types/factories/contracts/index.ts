@@ -6,4 +6,6 @@ export * as utils from "./utils";
 export { BasicMessageReceiver__factory } from "./BasicMessageReceiver__factory";
 export { BasicMessageSender__factory } from "./BasicMessageSender__factory";
 export { BasicTokenSender__factory } from "./BasicTokenSender__factory";
+export { CrossChainExpenseSplitterPTT__factory } from "./CrossChainExpenseSplitterPTT__factory";
+export { CrossChainPaymentSplitterPTT__factory } from "./CrossChainPaymentSplitterPTT__factory";
 export { ProgrammableTokenTransfers__factory } from "./ProgrammableTokenTransfers__factory";

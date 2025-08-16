@@ -8,4 +8,6 @@ export type { utils };
 export type { BasicMessageReceiver } from "./BasicMessageReceiver";
 export type { BasicMessageSender } from "./BasicMessageSender";
 export type { BasicTokenSender } from "./BasicTokenSender";
+export type { CrossChainExpenseSplitterPTT } from "./CrossChainExpenseSplitterPTT";
+export type { CrossChainPaymentSplitterPTT } from "./CrossChainPaymentSplitterPTT";
 export type { ProgrammableTokenTransfers } from "./ProgrammableTokenTransfers";

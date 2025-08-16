@@ -112,6 +112,10 @@ export type { ISwapRouter } from "./contracts/CrossChainExpenseSplitter.sol/ISwa
 export { ISwapRouter__factory } from "./factories/contracts/CrossChainExpenseSplitter.sol/ISwapRouter__factory";
 export type { IWETH9 } from "./contracts/CrossChainExpenseSplitter.sol/IWETH9";
 export { IWETH9__factory } from "./factories/contracts/CrossChainExpenseSplitter.sol/IWETH9__factory";
+export type { CrossChainExpenseSplitterPTT } from "./contracts/CrossChainExpenseSplitterPTT";
+export { CrossChainExpenseSplitterPTT__factory } from "./factories/contracts/CrossChainExpenseSplitterPTT__factory";
+export type { CrossChainPaymentSplitterPTT } from "./contracts/CrossChainPaymentSplitterPTT";
+export { CrossChainPaymentSplitterPTT__factory } from "./factories/contracts/CrossChainPaymentSplitterPTT__factory";
 export type { ProgrammableTokenTransfers } from "./contracts/ProgrammableTokenTransfers";
 export { ProgrammableTokenTransfers__factory } from "./factories/contracts/ProgrammableTokenTransfers__factory";
 export type { Withdraw } from "./contracts/utils/Withdraw";
