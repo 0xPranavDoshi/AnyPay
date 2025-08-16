@@ -18,6 +18,7 @@ export default function SignUp() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [walletAddress, setWalletAddress] = useState("");
   const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -57,6 +58,11 @@ export default function SignUp() {
       return;
     }
 
+    if (!password.trim()) {
+      setError("Please enter a password");
+      return;
+    }
+
     if (!walletAddress) {
       setError("Please connect your wallet first");
       return;
@@ -74,6 +80,7 @@ export default function SignUp() {
         },
         body: JSON.stringify({
           username: username.trim(),
+          password: password.trim(),
           walletAddress: walletAddress,
         }),
       });
@@ -197,6 +204,24 @@ export default function SignUp() {
               />
             </div>
 
+            {/* Password Field */}
+            <div className="mb-4 text-left">
+              <label
+                htmlFor="password"
+                className="block text-[var(--color-text-primary)] font-semibold mb-2 text-left"
+              >
+                Create Password
+              </label>
+              <input
+                type="password"
+                id="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your password"
+                className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 text-lg transition-all duration-300 focus:border-[var(--color-primary)] focus:shadow-lg focus:shadow-[var(--color-primary)]/20 focus:outline-none focus:scale-[1.02]"
+              />
+            </div>
+
             {/* Wallet Connection */}
             <div className="mb-6">
               <h3 className="text-[var(--color-text-primary)] font-semibold mb-3 text-left">
@@ -229,7 +254,12 @@ export default function SignUp() {
             <div className="mb-4">
               <button
                 onClick={handleSignUp}
-                disabled={isSubmitting || !username.trim() || !walletAddress}
+                disabled={
+                  isSubmitting ||
+                  !username.trim() ||
+                  !walletAddress ||
+                  !password.trim()
+                }
                 className="group cursor-pointer relative overflow-hidden w-full bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary)]/80 text-white px-8 py-4 rounded-xl font-bold text-lg hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--color-primary)]/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 <span className="relative z-10">

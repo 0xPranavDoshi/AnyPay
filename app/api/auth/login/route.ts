@@ -4,12 +4,12 @@ import { User } from "@/lib/interface";
 
 export async function POST(request: NextRequest) {
   try {
-    const { username, password, walletAddress } = await request.json();
+    const { username, password } = await request.json();
 
     // Validate required fields
-    if (!username || !password || !walletAddress) {
+    if (!username || !password) {
       return NextResponse.json(
-        { error: "Username, password, and wallet address are required" },
+        { error: "Username and password are required" },
         { status: 400 }
       );
     }
@@ -18,8 +18,7 @@ export async function POST(request: NextRequest) {
     if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
       return NextResponse.json(
         {
-          error:
-            "Username must be 3-20 characters long and contain only letters, numbers, and underscores",
+          error: "Invalid username format",
         },
         { status: 400 }
       );
@@ -28,15 +27,7 @@ export async function POST(request: NextRequest) {
     // Validate password (minimum 6 characters)
     if (password.length < 6) {
       return NextResponse.json(
-        { error: "Password must be at least 6 characters long" },
-        { status: 400 }
-      );
-    }
-
-    // Validate wallet address format (Ethereum address)
-    if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
-      return NextResponse.json(
-        { error: "Invalid wallet address format" },
+        { error: "Invalid password format" },
         { status: 400 }
       );
     }
@@ -48,52 +39,41 @@ export async function POST(request: NextRequest) {
     const db = client.db("users");
     const profilesCollection = db.collection("profiles");
 
-    // Check if username already exists
-    const existingUsername = await profilesCollection.findOne({ username });
-    if (existingUsername) {
+    // Find user by username
+    const user = await profilesCollection.findOne({ username });
+
+    if (!user) {
       await client.close();
       return NextResponse.json(
-        { error: "Username already taken" },
-        { status: 409 }
+        { error: "Invalid username or password" },
+        { status: 401 }
       );
     }
 
-    // Check if wallet address already exists
-    const existingWallet = await profilesCollection.findOne({ walletAddress });
-    if (existingWallet) {
+    // Check password (in production, you should hash passwords)
+    if (user.password !== password) {
       await client.close();
       return NextResponse.json(
-        { error: "Wallet address already registered" },
-        { status: 409 }
+        { error: "Invalid username or password" },
+        { status: 401 }
       );
     }
-
-    // Create user document
-    const user: User = {
-      username,
-      password,
-      walletAddress,
-    };
-
-    // Insert user into profiles collection
-    const result = await profilesCollection.insertOne(user);
 
     await client.close();
 
-    // Return success response
+    // Return success response with user data (excluding password)
     return NextResponse.json(
       {
-        message: "User created successfully",
-        userId: result.insertedId,
+        message: "Login successful",
         user: {
           username: user.username,
           walletAddress: user.walletAddress,
         },
       },
-      { status: 201 }
+      { status: 200 }
     );
   } catch (error) {
-    console.error("Signup error:", error);
+    console.error("Login error:", error);
 
     // Handle MongoDB connection errors
     if (error instanceof Error && error.message.includes("MongoNetworkError")) {
