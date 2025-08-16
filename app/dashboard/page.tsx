@@ -45,6 +45,92 @@ export default function Dashboard() {
     }
   }, []);
 
+  // Check for pending messages after returning from payment gateway
+  useEffect(() => {
+    const chatData = sessionStorage.getItem("chatData");
+    if (chatData) {
+      try {
+        const data = JSON.parse(chatData);
+
+        // Restore the complete chat history
+        if (data.chatHistory) {
+          setChatHistory(data.chatHistory);
+        }
+
+        // Add the pending user message to chat history
+        if (data.pendingMessage) {
+          const userMessage: ChatMessage = {
+            role: "user",
+            content: data.pendingMessage.content,
+            image: data.pendingMessage.image,
+          };
+          setChatHistory((prev) => [...prev, userMessage]);
+
+          // Process the message (this would normally happen after payment)
+          processMessageAfterPayment(data.pendingMessage);
+        }
+
+        // Clear the stored chat data
+        sessionStorage.removeItem("chatData");
+      } catch (error) {
+        console.error("Error processing stored chat data:", error);
+      }
+    } else {
+      // Fallback: check for old format (backward compatibility)
+      const pendingMessage = sessionStorage.getItem("pendingMessage");
+      if (pendingMessage) {
+        try {
+          const messageData = JSON.parse(pendingMessage);
+
+          // Add the user message to chat history
+          const userMessage: ChatMessage = {
+            role: "user",
+            content: messageData.content,
+            image: messageData.image,
+          };
+          setChatHistory((prev) => [...prev, userMessage]);
+
+          // Clear the pending message
+          sessionStorage.removeItem("pendingMessage");
+
+          // Process the message
+          processMessageAfterPayment(messageData);
+        } catch (error) {
+          console.error("Error processing pending message:", error);
+        }
+      }
+    }
+  }, []);
+
+  // Function to process message after payment completion
+  const processMessageAfterPayment = async (messageData: {
+    content: string;
+    image?: string;
+  }) => {
+    setIsLoading(true);
+
+    try {
+      // TODO: Implement actual AI bot response
+      // For now, simulate a response
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const botResponse: ChatMessage = {
+        role: "bot",
+        content: `Payment completed! I've processed your ${
+          messageData.image ? "receipt image and " : ""
+        }message: "${
+          messageData.content || "receipt"
+        }"\n\nThis appears to be a valid receipt. I'll help you split this expense with your group!`,
+      };
+
+      setChatHistory((prev) => [...prev, botResponse]);
+    } catch (error) {
+      console.error("Error getting bot response:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Mock data - replace with actual data from your API
   const youOwe = [
     { user: { username: "alice", walletAddress: "0x123..." }, amount: 45.67 },
@@ -86,32 +172,30 @@ export default function Dashboard() {
   const handleSendMessage = async () => {
     if ((!input.trim() && !image) || isLoading) return;
 
-    const userMessage: ChatMessage = { role: "user", content: input, image };
-    setChatHistory((prev) => [...prev, userMessage]);
+    // Store the complete chat history and pending message in sessionStorage
+    const chatData = {
+      chatHistory: chatHistory,
+      pendingMessage: {
+        content: input,
+        image: image,
+        timestamp: Date.now(),
+      },
+    };
+    sessionStorage.setItem("chatData", JSON.stringify(chatData));
+
+    // Clear the input fields and image
     setInput("");
     setImage(undefined);
-    setIsLoading(true);
+    if (fileInputRef.current) fileInputRef.current.value = "";
 
-    try {
-      // TODO: Implement actual AI bot response
-      // For now, simulate a response
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+    // Redirect to X402 gateway with message data as URL parameters
+    const params = new URLSearchParams();
+    if (input.trim()) params.append("message", input.trim());
+    if (image) params.append("image", image);
+    params.append("returnUrl", "/dashboard");
 
-      const botResponse: ChatMessage = {
-        role: "bot",
-        content: `I've processed your ${
-          image ? "receipt image and " : ""
-        }message: "${
-          input || "receipt"
-        }"\n\nThis appears to be a valid receipt. I'll help you split this expense with your group!`,
-      };
-
-      setChatHistory((prev) => [...prev, botResponse]);
-    } catch (error) {
-      console.error("Error getting bot response:", error);
-    } finally {
-      setIsLoading(false);
-    }
+    // Redirect to payment gateway
+    window.location.href = `/x402-gateway?${params.toString()}`;
   };
 
   return (
@@ -160,7 +244,7 @@ export default function Dashboard() {
       </header>
 
       {/* Main Content - Side by Side Layout */}
-      <main className="relative z-10 max-w-7xl mx-auto px-8 py-8 h-[calc(100vh-8rem)]">
+      <main className="relative z-10 max-w-7xl mx-auto px-8 py-8 h-[calc(100vh-10rem)]">
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 h-full">
           {/* Left Side - Balances with Tabs */}
           <div className="flex flex-col h-full">
@@ -189,7 +273,7 @@ export default function Dashboard() {
             </div>
 
             {/* Tab Content */}
-            <div className="flex-1 bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-6 overflow-y-auto">
+            <div className="h-[520px] bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-6 overflow-y-auto">
               {activeTab === "owe" ? (
                 // You Owe Section
                 <div>
@@ -321,7 +405,7 @@ export default function Dashboard() {
             </div>
 
             {/* Chat Messages */}
-            <div className="flex-1 bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 mb-4 overflow-y-auto">
+            <div className="h-[370px] bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 mb-4 overflow-y-auto">
               {chatHistory.length === 0 ? (
                 <div className="text-center py-16 text-[var(--color-text-muted)]">
                   <div className="text-6xl mb-4">🤖</div>
