@@ -76,11 +76,37 @@ export default function Dashboard() {
 					</div>
 				</div>
 			</nav>
-			<section className="full-height bg-[var(--color-bg-primary)] pt-24 pb-24 flex flex-col justify-center items-center relative overflow-hidden">
-				{/* Animated background elements (copied from landing for vibe consistency) */}
-				<div className="absolute inset-0 pointer-events-none">
-					{/* ...existing code... */}
-				</div>
+					<section className="full-height bg-[var(--color-bg-primary)] pt-24 pb-24 flex flex-col justify-center items-center relative overflow-hidden">
+						<div className="absolute inset-0 pointer-events-none">
+							{/* Floating geometric shapes */}
+							<div className="absolute top-20 left-10 w-16 h-16 border border-[var(--color-primary)]/20 rounded-lg rotate-45 animate-pulse"></div>
+							<div className="absolute top-32 right-20 w-8 h-8 bg-[var(--color-primary)]/10 rounded-full animate-pulse delay-1000"></div>
+							<div className="absolute top-40 left-1/3 w-12 h-12 border border-[var(--color-primary)]/15 rounded-full animate-pulse delay-2000"></div>
+							<div className="absolute top-24 right-1/4 w-10 h-10 border border-[var(--color-primary)]/25 rounded-lg rotate-12 animate-pulse delay-1500"></div>
+							<div className="absolute top-48 left-1/5 w-6 h-6 bg-[var(--color-primary)]/15 rounded-full animate-pulse delay-3000"></div>
+
+							{/* Gradient orbs */}
+							<div className="absolute bottom-40 right-10 w-24 h-24 bg-gradient-to-br from-[var(--color-primary)]/20 to-transparent rounded-full blur-xl animate-pulse delay-1500"></div>
+							<div className="absolute bottom-20 left-1/4 w-20 h-20 bg-gradient-to-br from-[var(--color-primary)]/15 to-transparent rounded-full blur-xl animate-pulse delay-500"></div>
+							<div className="absolute bottom-32 right-1/3 w-16 h-16 bg-gradient-to-br from-[var(--color-primary)]/10 to-transparent rounded-full blur-xl animate-pulse delay-2500"></div>
+							<div className="absolute bottom-48 left-1/2 w-12 h-12 bg-gradient-to-br from-[var(--color-primary)]/20 to-transparent rounded-full blur-xl animate-pulse delay-1000"></div>
+
+							{/* Network connection lines */}
+							<div className="absolute top-1/4 left-1/2 w-px h-32 bg-gradient-to-b from-transparent via-[var(--color-primary)]/20 to-transparent"></div>
+							<div className="absolute top-1/3 right-1/3 w-24 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/20 to-transparent"></div>
+							<div className="absolute top-1/2 left-1/4 w-16 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/15 to-transparent"></div>
+							<div className="absolute top-2/3 right-1/4 w-px h-20 bg-gradient-to-b from-transparent via-[var(--color-primary)]/15 to-transparent"></div>
+
+							{/* Floating dots with different sizes */}
+							<div className="absolute top-16 left-1/2 w-2 h-2 bg-[var(--color-primary)]/30 rounded-full animate-pulse delay-500"></div>
+							<div className="absolute top-28 right-16 w-1.5 h-1.5 bg-[var(--color-primary)]/25 rounded-full animate-pulse delay-2000"></div>
+							<div className="absolute top-36 left-16 w-1 h-1 bg-[var(--color-primary)]/20 rounded-full animate-pulse delay-3500"></div>
+							<div className="absolute top-52 right-1/2 w-2.5 h-2.5 bg-[var(--color-primary)]/35 rounded-full animate-pulse delay-1000"></div>
+
+							{/* Diagonal lines */}
+							<div className="absolute top-20 left-1/3 w-20 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/20 to-transparent transform rotate-45 origin-left"></div>
+							<div className="absolute top-32 right-1/4 w-16 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/15 to-transparent transform -rotate-45 origin-right"></div>
+						</div>
 				 <div className="z-10 flex flex-col items-center justify-center h-full w-full gap-8 mt-12">
 					 <h1 className="text-3xl font-bold mb-8">Hey {username || "testPerson"}</h1>
 					 <div className="flex flex-row items-start justify-center w-full gap-8">
