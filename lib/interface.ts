@@ -36,9 +36,6 @@ export interface CrossChainPayment {
 export interface Payment {
   recipient: User;
   totalAmount: number;
-  senders: {
-    user: User;
-    amount: number;
-  }[];
+  sender: User;
   crossChainPayments?: CrossChainPayment[];
 }
