@@ -402,30 +402,74 @@ export default function Dashboard() {
   // Mention system functions
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
+    const previousInput = input;
     setInput(value);
 
     // Check for @ symbol to open mention dropdown
     const atIndex = value.lastIndexOf("@");
     if (atIndex !== -1) {
       const searchTerm = value.slice(atIndex + 1);
-      const inputRect = inputRef.current?.getBoundingClientRect();
 
-      if (inputRect) {
-        setMentionDropdown({
-          isOpen: true,
-          searchTerm,
-          position: {
-            x: 0, // Relative to the input container
-            y: 0, // Will be positioned above the input
-          },
-        });
+      // Check if the search term contains a space (user finished typing username)
+      if (searchTerm.includes(" ")) {
+        setMentionDropdown((prev) => ({ ...prev, isOpen: false }));
+        return;
       }
+
+      // Open dropdown immediately when @ is typed
+      setMentionDropdown({
+        isOpen: true,
+        searchTerm,
+        position: {
+          x: 0, // Relative to the input container
+          y: 0, // Will be positioned above the input
+        },
+      });
     } else {
       setMentionDropdown((prev) => ({ ...prev, isOpen: false }));
     }
+
+    // Check if any mentioned users were removed from the input
+    checkForRemovedMentions(previousInput, value);
+  };
+
+  // Function to check if mentioned users were removed from input
+  const checkForRemovedMentions = (
+    previousInput: string,
+    currentInput: string
+  ) => {
+    // Extract all @username patterns from previous and current input
+    // Using a more robust regex that captures @username followed by space or end of string
+    const previousMentions = (previousInput.match(/@(\w+)(?=\s|$)/g) ||
+      []) as string[];
+    const currentMentions = (currentInput.match(/@(\w+)(?=\s|$)/g) ||
+      []) as string[];
+
+    // Find mentions that were removed
+    const removedMentions = previousMentions.filter(
+      (mention) => !currentMentions.includes(mention)
+    );
+
+    // Remove users from usersSelected if their mention was deleted
+    removedMentions.forEach((removedMention) => {
+      const username = removedMention.substring(1); // Remove @ symbol
+      const userToRemove = usersSelected.find(
+        (user) => user.username === username
+      );
+
+      if (userToRemove) {
+        console.log(
+          `Removing ${username} from selected users as mention was deleted`
+        );
+        setUsersSelected((prev) =>
+          prev.filter((user) => user.username !== username)
+        );
+      }
+    });
   };
 
   const handleSelectUser = (selectedUser: User) => {
+    console.log("selectedUser is", selectedUser);
     // Check if user is already selected
     if (
       !usersSelected.find(
@@ -435,14 +479,19 @@ export default function Dashboard() {
       setUsersSelected((prev) => [...prev, selectedUser]);
     }
 
-    // Replace @username with @username in input
+    // Replace @searchTerm with @username in input
     const atIndex = input.lastIndexOf("@");
     if (atIndex !== -1) {
       const beforeAt = input.slice(0, atIndex);
-      const afterUsername = input.slice(
+      const afterSearchTerm = input.slice(
         atIndex + mentionDropdown.searchTerm.length + 1
       );
-      setInput(beforeAt + "@" + selectedUser.username + " " + afterUsername);
+      // Add the username with a space after it
+      console.log(
+        "new input is",
+        beforeAt + "@" + selectedUser.username + " " + afterSearchTerm
+      );
+      setInput(beforeAt + "@" + selectedUser.username + " " + afterSearchTerm);
     }
 
     // Close dropdown
@@ -457,6 +506,13 @@ export default function Dashboard() {
 
   const closeMentionDropdown = () => {
     setMentionDropdown((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  // Handle keydown events for better UX
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      closeMentionDropdown();
+    }
   };
 
   const handleSendMessage = async () => {
@@ -1214,6 +1270,7 @@ export default function Dashboard() {
                   type="text"
                   value={input}
                   onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
                   placeholder="Ask about your expenses or upload a receipt... (Type @ to mention users)"
                   className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 focus:border-[var(--color-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 transition-all duration-200"
                   onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}

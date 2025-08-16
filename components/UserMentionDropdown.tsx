@@ -132,8 +132,10 @@ export default function UserMentionDropdown({
             {filteredUsers.map((user, index) => (
               <button
                 key={user.walletAddress}
-                onClick={() => onSelectUser(user)}
-                className="w-full px-4 py-3 text-left hover:bg-[var(--color-primary)]/10 transition-colors duration-150 flex items-center gap-3 group"
+                onClick={() => {
+                  onSelectUser(user);
+                }}
+                className="w-full px-4 py-3 cursor-pointer text-left hover:bg-[var(--color-primary)]/10 transition-colors duration-150 flex items-center gap-3 group"
               >
                 {/* User Avatar */}
                 <div className="w-10 h-10 bg-gradient-to-br from-[var(--color-primary)]/20 to-[var(--color-primary)]/10 rounded-full flex items-center justify-center text-lg font-semibold text-[var(--color-primary)] group-hover:scale-110 transition-transform duration-150">
