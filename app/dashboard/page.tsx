@@ -5,6 +5,11 @@ import { getCookie, removeCookie } from "@/utils/cookie";
 import { CrossChainPayment, PaymentStatus, TokenType } from "@/lib/interface";
 import PaymentModal from "@/components/PaymentModal";
 import TransactionModal from "@/components/TransactionModal";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import SelectedUsers from "@/components/SelectedUsers";
+import UserMentionDropdown from "@/components/UserMentionDropdown";
+import { ethers } from "ethers";
 
 interface User {
   username: string;
@@ -59,6 +64,19 @@ export default function Dashboard() {
     totalSteps: number;
   }>({ isProcessing: false, status: "", step: 0, totalSteps: 4 });
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  
+  // Payment data state
+  const [youOwe, setYouOwe] = useState<any[]>([]);
+  const [owedToYou, setOwedToYou] = useState<any[]>([]);
+  
+  // Mention system state
+  const [usersSelected, setUsersSelected] = useState<User[]>([]);
+  const [mentionDropdown, setMentionDropdown] = useState<{
+    isOpen: boolean;
+    searchTerm: string;
+    position: { x: number; y: number };
+  }>({ isOpen: false, searchTerm: "", position: { x: 0, y: 0 } });
 
   // Get user from cookies and fetch payments on component mount
   useEffect(() => {
@@ -109,6 +127,9 @@ export default function Dashboard() {
     // Clear user state
     setUser(null);
     setCrossChainPayments([]);
+    setYouOwe([]);
+    setOwedToYou([]);
+    setUsersSelected([]);
 
     // Redirect to home page
     window.location.href = "/";
@@ -155,37 +176,35 @@ export default function Dashboard() {
     destinationChain: string;
     tokenType: TokenType;
   }) => {
-    if (!paymentModal.recipientUser || !paymentModal.amount) return;
+    if (!paymentModal.recipientUser || !paymentModal.amount || !user) return;
 
     try {
       // Start transaction process
       setTransactionState({
         isProcessing: true,
-        status: "Starting payment process...",
+        status: "🔄 Connecting to MetaMask...",
         step: 1,
         totalSteps: 4
       });
 
-      // Step 1: Connect wallet & switch chain (simulated)
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Connect to MetaMask
+      if (!window.ethereum) {
+        throw new Error("MetaMask not installed");
+      }
+
+      await window.ethereum.request({ method: 'eth_requestAccounts' });
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+      const userAddress = await signer.getAddress();
+
+      // Step 1: Get transaction parameters from API
       setTransactionState(prev => ({
         ...prev,
-        status: "Requesting token approval...",
+        status: "📋 Preparing transaction...",
         step: 2
       }));
 
-      // Step 2: Token approval (simulated)
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setTransactionState(prev => ({
-        ...prev,
-        status: "Confirming cross-chain transaction...",
-        step: 3
-      }));
-
-      // Step 3: Transaction signing and submission
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const response = await fetch("/api/pay", {
+      const payResponse = await fetch("/api/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -194,36 +213,121 @@ export default function Dashboard() {
           sourceChain: paymentData.sourceChain,
           destinationChain: paymentData.destinationChain,
           tokenType: paymentData.tokenType,
-          signedTxData: "0x..." // Would contain actual signed transaction
+          userAddress: userAddress
         })
       });
 
-      const result = await response.json();
-      
-      if (result.success) {
-        setTransactionState(prev => ({
-          ...prev,
-          status: "Transaction confirmed!",
-          step: 4,
-          txHash: result.txHash
-        }));
-        
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        setPaymentModal({ isOpen: false });
+      const payResult = await payResponse.json();
+      if (!payResult.success) {
+        throw new Error(payResult.error || "Failed to prepare transaction");
+      }
+
+      const { transactionParams, paymentId } = payResult;
+
+      // Step 2: Check/Approve token if needed
+      setTransactionState(prev => ({
+        ...prev,
+        status: "✅ Checking token approval...",
+        step: 3
+      }));
+
+      const tokenContract = new ethers.Contract(
+        transactionParams.tokenAddress,
+        ["function allowance(address,address) view returns (uint256)", "function approve(address,uint256) returns (bool)"],
+        signer
+      );
+
+      const allowance = await tokenContract.allowance(userAddress, transactionParams.contractAddress);
+      const amountWei = ethers.BigNumber.from(transactionParams.amountWei);
+
+      if (allowance.lt(amountWei)) {
+        const approveTx = await tokenContract.approve(transactionParams.contractAddress, amountWei);
+        await approveTx.wait();
+      }
+
+      // Step 3: Execute cross-chain payment
+      setTransactionState(prev => ({
+        ...prev,
+        status: "🚀 Executing cross-chain payment...",
+        step: 4
+      }));
+
+      const paymentContract = new ethers.Contract(
+        transactionParams.contractAddress,
+        ["function payRecipient(address,uint64,address,uint256,uint8,string) payable returns (bytes32)"],
+        signer
+      );
+
+      // Calculate CCIP fees
+      let ccipFees;
+      try {
+        ccipFees = await paymentContract.callStatic.payRecipient(
+          transactionParams.recipientAddress,
+          transactionParams.destinationChainSelector,
+          transactionParams.tokenAddress,
+          transactionParams.amountWei,
+          transactionParams.tokenType,
+          paymentId
+        );
+      } catch (error) {
+        console.log("Fee estimation failed, using fallback:", error);
+        ccipFees = ethers.utils.parseEther("0.003"); // Much lower fallback fee for testing
+      }
+
+      const tx = await paymentContract.payRecipient(
+        transactionParams.recipientAddress,
+        transactionParams.destinationChainSelector,
+        transactionParams.tokenAddress,
+        transactionParams.amountWei,
+        transactionParams.tokenType,
+        paymentId,
+        { 
+          gasLimit: 500000, // Reduced gas limit
+          value: ccipFees.add(ethers.utils.parseEther("0.001")) // Much smaller buffer - total ~0.004 ETH
+        }
+      );
+
+      console.log("Transaction sent:", tx.hash);
+
+      // Submit transaction hash for tracking
+      const submitResult = await fetch("/api/submit-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentId,
+          txHash: tx.hash,
+          sourceChain: paymentData.sourceChain
+        })
+      });
+
+      const submitData = await submitResult.json();
+      if (submitResult.ok && submitData.success) {
         setTransactionState({
           isProcessing: false,
-          status: "",
-          step: 0,
-          totalSteps: 4
+          status: "✅ Payment completed successfully!",
+          step: 4,
+          totalSteps: 4,
+          txHash: tx.hash
         });
+        
+        setTimeout(() => {
+          setPaymentModal({ isOpen: false });
+          setTransactionState({
+            isProcessing: false,
+            status: "",
+            step: 0,
+            totalSteps: 4
+          });
+        }, 3000);
 
+        // Refresh payments
         if (user) {
           fetchUserPayments(user.walletAddress);
         }
       } else {
-        throw new Error(submitResult.error || submitResult.details);
+        throw new Error(submitData.error || submitData.details || "Failed to submit payment");
       }
+
     } catch (error) {
       console.error("Payment error:", error);
       setTransactionState({
