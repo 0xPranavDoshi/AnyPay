@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { getCookie } from "@/utils/cookie";
+import { getCookie, removeCookie } from "@/utils/cookie";
 import { CrossChainPayment, PaymentStatus, TokenType } from "@/lib/interface";
 import PaymentModal from "@/components/PaymentModal";
 import TransactionModal from "@/components/TransactionModal";
@@ -82,6 +82,19 @@ export default function Dashboard() {
     } finally {
       setPaymentsLoading(false);
     }
+  };
+
+  // Handle user logout
+  const handleLogout = () => {
+    // Remove user cookie
+    removeCookie("user");
+    
+    // Clear user state
+    setUser(null);
+    setCrossChainPayments([]);
+    
+    // Redirect to home page
+    window.location.href = "/";
   };
 
   // Mock data for now - will be replaced with real payment data
@@ -334,7 +347,10 @@ export default function Dashboard() {
                 {user.walletAddress}
               </div>
             )}
-            <button className="bg-[var(--color-primary)] text-white px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200">
+            <button 
+              onClick={handleLogout}
+              className="bg-[var(--color-primary)] text-white px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200"
+            >
               Disconnect
             </button>
           </div>

@@ -13,3 +13,8 @@ export function getCookie(name: string): string | null {
     return parts[0] === name ? decodeURIComponent(parts[1]) : r;
   }, null as string | null);
 }
+
+// Remove a cookie by name
+export function removeCookie(name: string) {
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+}
