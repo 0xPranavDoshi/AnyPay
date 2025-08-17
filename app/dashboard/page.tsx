@@ -3,7 +3,12 @@
 import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { removeCookie } from "@/utils/cookie";
-import { CrossChainPayment, TokenType, Payment, PaymentStatus } from "@/lib/interface";
+import {
+  CrossChainPayment,
+  TokenType,
+  Payment,
+  PaymentStatus,
+} from "@/lib/interface";
 import PaymentModal from "@/components/PaymentModal";
 import TransactionModal from "@/components/TransactionModal";
 import ReactMarkdown from "react-markdown";
@@ -739,7 +744,7 @@ export default function Dashboard() {
                   if (parsed.sessionId) {
                     setSessionId(parsed.sessionId);
                   }
-                  
+
                   // Check if settlement was completed and refresh payments
                   if (parsed.billSplitting?.completed && user?.walletAddress) {
                     console.log("Settlement completed, refreshing payments...");
@@ -968,7 +973,7 @@ export default function Dashboard() {
             </div>
 
             {/* Tab Content */}
-            <div className="flex-1 bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-4 overflow-y-auto">
+            <div className="flex-1 bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-4 overflow-y-auto h-96">
               {activeTab === "paid" ? (
                 // Paid Payments Section
                 <div>
@@ -1025,8 +1030,7 @@ export default function Dashboard() {
                           <div className="flex items-center justify-between mb-3">
                             <div>
                               <p className="font-semibold text-[var(--color-text-primary)]">
-                                Paid to{" "}
-                                {item.to?.username || "Unknown"}
+                                Paid to {item.to?.username || "Unknown"}
                               </p>
                               <p className="text-sm text-[var(--color-text-muted)] font-mono">
                                 {item.to?.walletAddress || item.recipient}
@@ -1149,7 +1153,7 @@ export default function Dashboard() {
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-4">
+                    <div className="space-y-4 h-96">
                       {youOwe.map((item, index) => (
                         <div
                           key={index}
@@ -1307,7 +1311,7 @@ export default function Dashboard() {
                       </p>
                     </div>
                   ) : (
-                    <div className="space-y-4">
+                    <div className="space-y-4 h-96">
                       {owedToYou.map((item, index) => (
                         <div
                           key={index}

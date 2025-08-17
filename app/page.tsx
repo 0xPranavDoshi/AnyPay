@@ -66,7 +66,7 @@ export default function Home() {
           <div className="mb-6">
             <h1 className="animate-fade-in-up text-[clamp(2rem,5vw,3.5rem)] font-extrabold mb-4 leading-tight tracking-tight">
               <span className="text-[var(--color-text-secondary)] relative">
-                Split Bills.
+                Settle Debts.
                 <div className="absolute -bottom-2 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[var(--color-primary)]/30 to-transparent"></div>
               </span>
               <br />
@@ -100,7 +100,7 @@ export default function Home() {
           <div className="animate-fade-in-up stagger-2 flex gap-6 justify-center flex-wrap mb-12">
             <button className="group relative overflow-hidden bg-[var(--color-primary)] text-white px-8 py-4 rounded-2xl font-bold text-base hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--color-primary)]/30">
               <a href="/signup" className="relative z-10 block w-full h-full">
-                Start Splitting Bills
+                Start Settling Debts
               </a>
               <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/80 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
             </button>
@@ -161,14 +161,14 @@ export default function Home() {
               <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-primary)]/10 to-transparent rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
               <div className="relative bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl px-8 py-4 flex items-center gap-4 hover:scale-105 hover:-translate-y-2 transition-all duration-300 hover:shadow-xl hover:shadow-[var(--color-primary)]/20">
                 <Image
-                  src="/partners/hardhat.jpg"
-                  alt="HardHat"
+                  src="/partners/flow.png"
+                  alt="Flow"
                   width={28}
                   height={28}
                   className="object-contain rounded-full group-hover:scale-110 transition-transform duration-300"
                 />
                 <span className="text-[var(--color-text-secondary)] text-lg font-semibold group-hover:text-[var(--color-primary)] transition-colors duration-300">
-                  HardHat
+                  Flow
                 </span>
               </div>
             </div>
@@ -476,14 +476,14 @@ export default function Home() {
                 <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-primary)]/10 to-transparent rounded-xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
                 <div className="relative bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl px-6 py-3 flex items-center gap-3 hover:scale-105 hover:-translate-y-1 transition-all duration-300 hover:shadow-lg hover:shadow-[var(--color-primary)]/20">
                   <Image
-                    src="/partners/hardhat.jpg"
-                    alt="HardHat"
+                    src="/partners/flow.png"
+                    alt="Flow"
                     width={20}
                     height={20}
                     className="object-contain rounded-full group-hover:scale-110 transition-transform duration-300"
                   />
                   <span className="text-[var(--color-text-secondary)] text-sm font-semibold group-hover:text-[var(--color-primary)] transition-colors duration-300">
-                    HardHat
+                    Flow
                   </span>
                 </div>
               </div>
