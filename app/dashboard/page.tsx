@@ -321,8 +321,8 @@ export default function Dashboard() {
           txHash: tx.hash,
           sourceChain: paymentData.sourceChain,
           destinationChain: paymentData.destinationChain,
-          tokenType: paymentData.tokenType
-        })
+          tokenType: paymentData.tokenType,
+        }),
       });
 
       const submitData = await submitResult.json();
@@ -808,7 +808,6 @@ export default function Dashboard() {
               {activeTab === "paid" ? (
                 // Paid Payments Section
                 <div>
-
                   {paymentsLoading ? (
                     <div className="text-center py-8 text-[var(--color-text-muted)]">
                       <div className="text-4xl mb-2">⏳</div>
@@ -836,10 +835,12 @@ export default function Dashboard() {
                           <div className="flex items-center justify-between mb-3">
                             <div>
                               <p className="font-semibold text-[var(--color-text-primary)]">
-                                Paid to {item.recipientUser?.username || 'Unknown'}
+                                Paid to{" "}
+                                {item.recipientUser?.username || "Unknown"}
                               </p>
                               <p className="text-sm text-[var(--color-text-muted)] font-mono">
-                                {item.recipientUser?.walletAddress || item.recipient}
+                                {item.recipientUser?.walletAddress ||
+                                  item.recipient}
                               </p>
                               {item.description && (
                                 <p className="text-xs text-[var(--color-text-muted)] mt-1">
@@ -847,7 +848,8 @@ export default function Dashboard() {
                                 </p>
                               )}
                               <p className="text-xs text-blue-500 mt-1">
-                                ✅ Completed on {new Date(item.paidAt).toLocaleDateString()}
+                                ✅ Completed on{" "}
+                                {new Date(item.paidAt).toLocaleDateString()}
                               </p>
                             </div>
                             <div className="text-right">
@@ -855,7 +857,12 @@ export default function Dashboard() {
                                 ${item.amount.toFixed(2)}
                               </p>
                               <p className="text-xs text-[var(--color-text-muted)]">
-                                via {item.tokenType === 0 ? 'USDC' : item.tokenType === 1 ? 'CCIP-BnM' : 'CCIP-LnM'}
+                                via{" "}
+                                {item.tokenType === 0
+                                  ? "USDC"
+                                  : item.tokenType === 1
+                                  ? "CCIP-BnM"
+                                  : "CCIP-LnM"}
                               </p>
                             </div>
                           </div>
@@ -863,11 +870,15 @@ export default function Dashboard() {
                           {/* Transaction Details */}
                           <div className="p-3 bg-blue-900/10 rounded-lg border border-blue-500/20">
                             <div className="flex justify-between items-center mb-2">
-                              <span className="text-sm text-blue-600 font-medium">Transaction Hash:</span>
+                              <span className="text-sm text-blue-600 font-medium">
+                                Transaction Hash:
+                              </span>
                               {item.txHash && (
                                 <a
                                   href={`${
-                                    CHAINS[item.sourceChain as keyof typeof CHAINS]?.explorerUrl || "#"
+                                    CHAINS[
+                                      item.sourceChain as keyof typeof CHAINS
+                                    ]?.explorerUrl || "#"
                                   }${item.txHash}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
@@ -877,29 +888,36 @@ export default function Dashboard() {
                                 </a>
                               )}
                             </div>
-                            
+
                             <div className="grid grid-cols-2 gap-4 text-xs text-[var(--color-text-muted)]">
                               <div>
-                                <span className="font-medium">From:</span> {CHAINS[item.sourceChain as keyof typeof CHAINS]?.name || item.sourceChain}
+                                <span className="font-medium">From:</span>{" "}
+                                {CHAINS[item.sourceChain as keyof typeof CHAINS]
+                                  ?.name || item.sourceChain}
                               </div>
                               <div>
-                                <span className="font-medium">To:</span> {CHAINS[item.destinationChain as keyof typeof CHAINS]?.name || item.destinationChain}
+                                <span className="font-medium">To:</span>{" "}
+                                {CHAINS[
+                                  item.destinationChain as keyof typeof CHAINS
+                                ]?.name || item.destinationChain}
                               </div>
                             </div>
 
                             {/* CCIP Tracking */}
-                            {item.messageId && item.messageId !== "pending" && item.messageId !== "direct-transfer" && (
-                              <div className="mt-2">
-                                <a
-                                  href={`https://ccip.chain.link/msg/${item.messageId}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-500 hover:text-blue-300 text-sm underline"
-                                >
-                                  🔗 Track CCIP Message →
-                                </a>
-                              </div>
-                            )}
+                            {item.messageId &&
+                              item.messageId !== "pending" &&
+                              item.messageId !== "direct-transfer" && (
+                                <div className="mt-2">
+                                  <a
+                                    href={`https://ccip.chain.link/msg/${item.messageId}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-500 hover:text-blue-300 text-sm underline"
+                                  >
+                                    🔗 Track CCIP Message →
+                                  </a>
+                                </div>
+                              )}
                           </div>
                         </div>
                       ))}
@@ -909,7 +927,6 @@ export default function Dashboard() {
               ) : activeTab === "owe" ? (
                 // You Owe Section
                 <div>
-
                   {paymentsLoading ? (
                     <div className="text-center py-8 text-[var(--color-text-muted)]">
                       <div className="text-4xl mb-2">⏳</div>
@@ -1015,9 +1032,24 @@ export default function Dashboard() {
                                 item.paymentId
                               )
                             }
-                            className="w-full bg-gradient-to-r from-red-100 to-red-200 text-red-700 py-3 rounded-lg font-semibold hover:scale-105 transition-all duration-200 hover:shadow-sm hover:shadow-red-100/20"
+                            className="w-full bg-gradient-to-r from-red-100 to-red-200 text-red-700 py-3 rounded-lg font-semibold cursor-pointer transition-all duration-200 hover:shadow-sm hover:shadow-red-100/20"
                           >
-                            💳 Pay ${item.amount.toFixed(2)} Cross-Chain
+                            <div className="flex items-center justify-center gap-2">
+                              <svg
+                                className="w-5 h-5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                                />
+                              </svg>
+                              Pay ${item.amount.toFixed(2)} Cross-Chain
+                            </div>
                           </button>
                         </div>
                       ))}
@@ -1027,7 +1059,6 @@ export default function Dashboard() {
               ) : activeTab === "owed" ? (
                 // Owed To You Section
                 <div>
-
                   {paymentsLoading ? (
                     <div className="text-center py-8 text-[var(--color-text-muted)]">
                       <div className="text-4xl mb-2">⏳</div>
