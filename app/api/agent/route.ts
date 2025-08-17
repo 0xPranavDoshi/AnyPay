@@ -101,7 +101,7 @@ function getBillSplittingPrompt(
     `People involved: ${currentUsers.map(u => u.username).join(', ')}.` : 
     'No people selected yet.';
 
-  return `You are Vitalik, a helpful and focused AI agent hired by AnyPay. AnyPay offers a way to split bills through cross-chain multi-token web3 payments between a group of people. Your goal is to help the user through this process. If you are given an image of a receipt, you should parse it and understand the itemised breakdown; confirm with the user. Show the total amount to the user and gather the following information to decide how the split would be facilitated:
+  return `You are Vitalik, a helpful and focused AI agent hired by AnyPay. AnyPay offers a way to split shared purchases through cross-chain multi-token web3 payments between a group of people. Your goal is to help the user through this process. If you are given an image of a receipt, you should parse it and understand the itemised breakdown; confirm with the user. Show the total amount to the user and gather the following information to decide how the split would be facilitated:
   total amount, users involved, who paid the bill (could be multiple), how is it being split (equally, item-wise, ratio-wise, etc.). Take the user through these one by one.
   
   Once you have this information, you should do the calculations required to create a settlement plan that just shows the user who owes who. Proceed toward achieving the goal based on the following status/progress so far. Your end goal is to understand how the user wants to split it and update AnyPay's DB using save_settlement() at the end. Once that happens, AnyPay updates their dashboard and allows them to transfer to each other.
@@ -383,6 +383,7 @@ export async function POST(req: NextRequest) {
     // Get tool calls from OpenAI response
     const toolCalls = geminiResponse.toolCalls || [];
     console.log("Tool calls:", toolCalls?.length || 0);
+    console.log(toolCalls)
     
     // Execute tool calls
     for (const toolCall of toolCalls) {
@@ -464,6 +465,7 @@ export async function POST(req: NextRequest) {
         const retryToolCalls = retry.toolCalls || [];
         if ((retryToolCalls?.length || 0) > 0) {
           console.log('Retry tool calls:', retryToolCalls.length);
+          console.log(retryToolCalls)
           if ((retry as any)?.assistantMessage) {
             messagesLog.push((retry as any).assistantMessage);
           }
@@ -534,8 +536,91 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Server-side confirmation heuristic and robust fallback messaging
+    const promptText = String(prompt || '').toLowerCase();
+    const confirms = /(confirm|looks good|save|go ahead|yes|yep|sure|do it|finalize|complete|done)\b/i.test(promptText);
+    const hasReadyEqualSplit = !!(
+      updatedBillData?.totalAmount &&
+      Array.isArray(updatedBillData?.users) &&
+      (updatedBillData.users as User[]).length >= 2 &&
+      updatedBillData?.payer &&
+      (updatedBillData?.splitMethod === 'equal')
+    );
+
+    // If user text implies confirmation and we are ready, mark confirmed
+    if (confirms && hasReadyEqualSplit) {
+      updatedBillData.confirmed = true;
+    }
+
+    // If still no payments and now confirmed + ready, save settlement server-side (equal split)
+    if ((!paymentIds || paymentIds.length === 0) && updatedBillData?.confirmed && hasReadyEqualSplit) {
+      try {
+        const allUsersList = (updatedBillData.users as User[]) || [];
+        const payerUser = updatedBillData.payer as User;
+        const totalCents = Math.round((updatedBillData.totalAmount as number) * 100);
+        const peopleCount = allUsersList.length;
+        const perPersonBase = Math.floor(totalCents / peopleCount);
+        const remainder = totalCents - perPersonBase * peopleCount;
+        // Distribute remainder by user order for determinism
+        const payments = allUsersList
+          .map((u, idx) => ({
+            username: u.username,
+            shareCents: perPersonBase + (idx < remainder ? 1 : 0),
+          }))
+          .filter(({ username }) => username !== payerUser.username)
+          .map(({ username, shareCents }) => ({
+            sender: username,
+            recipient: payerUser.username,
+            amount: shareCents / 100,
+          }));
+        if (payments.length > 0) {
+          const autoIds = await handleSaveSettlement(
+            { payments },
+            allUsersList,
+            updatedBillData
+          );
+          paymentIds = autoIds;
+          updatedBillData.settlement = autoIds;
+        }
+      } catch (autoErr2) {
+        console.warn('Equal-split server-side save failed:', autoErr2);
+      }
+    }
+
+    // If we still don't have any user-visible text, synthesize a concise message
     if (!userVisibleResponse) {
-      userVisibleResponse = 'Agent unreachable.';
+      const missing: string[] = [];
+      if (!updatedBillData?.totalAmount) missing.push('total amount');
+      if (!updatedBillData?.payer) missing.push('payer');
+      if (!updatedBillData?.splitMethod) missing.push('split method');
+
+      if (missing.length > 0) {
+        userVisibleResponse = `Got it. Please provide: ${missing.join(', ')}.`;
+      } else if (updatedBillData?.splitMethod === 'equal' && Array.isArray(updatedBillData?.users) && updatedBillData.users.length > 0) {
+        const allUsersList = updatedBillData.users as User[];
+        const payerUser = updatedBillData.payer as User | undefined;
+        if (updatedBillData.totalAmount && payerUser) {
+          const totalCents = Math.round((updatedBillData.totalAmount as number) * 100);
+          const perPersonBase = Math.floor(totalCents / allUsersList.length);
+          const remainder = totalCents - perPersonBase * allUsersList.length;
+          const lines: string[] = [];
+          allUsersList.forEach((u, idx) => {
+            const share = (perPersonBase + (idx < remainder ? 1 : 0)) / 100;
+            if (u.username !== payerUser.username) {
+              lines.push(`${u.username} owes ${payerUser.username} $${share.toFixed(2)}`);
+            }
+          });
+          if (lines.length > 0) {
+            userVisibleResponse = `Equal split on $${(updatedBillData.totalAmount as number).toFixed(2)}.\n${lines.join('\n')}\nConfirm to save?`;
+          } else {
+            userVisibleResponse = 'Ready to confirm the equal split?';
+          }
+        } else {
+          userVisibleResponse = 'Who paid and what is the total?';
+        }
+      } else {
+        userVisibleResponse = 'How would you like to split the bill? (equal, item-wise, ratio)';
+      }
     }
 
     // 6. Update session with new conversation state
@@ -550,13 +635,53 @@ export async function POST(req: NextRequest) {
     };
 
     // Optional: summarize executed tool calls as a compact model message
-    const toolSummaryMessage = toolSummaries.length
-      ? {
-          role: "model" as const,
-          parts: [{ text: toolSummaries.join("\n") }],
-          timestamp: new Date(),
+    // Do not surface tool summaries to the user; keep them internal only
+    const toolSummaryMessage = null;
+
+    // If model set confirmed=true but did not call save_settlement, try equal-split fallback
+    try {
+      const shouldAutoSave =
+        (!paymentIds || paymentIds.length === 0) &&
+        updatedBillData?.confirmed === true &&
+        updatedBillData?.totalAmount &&
+        Array.isArray(updatedBillData?.users) &&
+        updatedBillData.users.length > 0 &&
+        updatedBillData?.payer &&
+        (updatedBillData?.splitMethod === "equal" || !updatedBillData?.splitMethod);
+
+      if (shouldAutoSave) {
+        const payerUser = updatedBillData.payer as User;
+        const allUsersList = (updatedBillData.users as User[]) || [];
+        const owers = allUsersList.filter((u) => u.username !== payerUser.username);
+
+        if (owers.length > 0) {
+          const totalCents = Math.round((updatedBillData.totalAmount as number) * 100);
+          const perPersonBase = Math.floor(totalCents / allUsersList.length);
+          const remainder = totalCents - perPersonBase * allUsersList.length;
+          const payments = allUsersList
+            .map((u, idx) => ({
+              username: u.username,
+              shareCents: (perPersonBase + (idx < remainder ? 1 : 0)),
+            }))
+            .filter(({ username }) => username !== payerUser.username)
+            .map(({ username, shareCents }) => ({
+              sender: username,
+              recipient: payerUser.username,
+              amount: shareCents / 100,
+            }));
+
+          const autoIds = await handleSaveSettlement(
+            { payments },
+            allUsersList,
+            { ...updatedBillData, splitMethod: updatedBillData.splitMethod || "equal" }
+          );
+          paymentIds = autoIds;
+          updatedBillData.settlement = autoIds;
         }
-      : null;
+      }
+    } catch (autoErr) {
+      console.warn("Auto-save settlement fallback failed:", autoErr);
+    }
 
     // Create AI response message (with tool calls removed)
     const aiMessage = {
