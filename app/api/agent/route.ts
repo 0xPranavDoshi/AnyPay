@@ -126,7 +126,7 @@ Tool-use policy (do not reveal to user):
 Style:
 - Be succinct, friendly and stay focused on bill splitting. 
 - Follow the flow defined by the status but don't print out the status. Nudge the user 1 step at a time. 
-- IMPORTANT: Don't ask the user for what's next. Tell them what's next.
+- ALWAYS provide a text response to the user, even when calling tools.
 
 COMPLETION: Your work is done once you call save_settlement(). Say thank you and goodbye. If there is a save_settlement() tool call in the chat history, say goodbye!
 
@@ -359,8 +359,10 @@ export async function POST(req: NextRequest) {
           session.history,
           AVAILABLE_TOOLS
         );
-      }
-      console.log("OpenRouter response received");
+              }
+        console.log("OpenRouter response received");
+        console.log("Text tokens in response:", (geminiResponse.text || '').length);
+        // console.log("Response text:", geminiResponse.text || '[NO TEXT]');
     } catch (geminiError) {
       console.error("OpenRouter API failed:", geminiError);
       return NextResponse.json(
@@ -435,22 +437,10 @@ export async function POST(req: NextRequest) {
       updatedBillData.peopleCount = users.length;
     }
     
-    // Build a user-visible response; if model text is empty (tool-only), craft the next prompt
+    // Build a user-visible response; if model text is empty, show error
     let userVisibleResponse = (geminiResponse.text || '').trim();
     if (!userVisibleResponse) {
-      // Generate a concise next-step prompt from current state
-      const names = (updatedBillData.users || []).map(u => u.username);
-      if (!updatedBillData.totalAmount) {
-        userVisibleResponse = 'Please provide the total amount (e.g., 85.88).';
-      } else if (!updatedBillData.users || (updatedBillData.users?.length || 0) === 0) {
-        userVisibleResponse = 'Please @mention everyone involved to continue.';
-      } else if (!updatedBillData.payer) {
-        userVisibleResponse = `Who paid the bill? Choose from: ${names.join(', ')}.`;
-      } else if (!updatedBillData.splitMethod) {
-        userVisibleResponse = 'How would you like to split? Equal / Item-wise / Ratio / Custom';
-      } else {
-        userVisibleResponse = 'Noted. I have updated the details. What next?';
-      }
+      userVisibleResponse = 'Agent unreachable.';
     }
 
     // 6. Update session with new conversation state

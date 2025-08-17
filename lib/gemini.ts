@@ -21,7 +21,7 @@ export async function callGemini(
     throw new Error('OPENROUTER_API_KEY environment variable is required');
   }
 
-  const MODEL = 'openai/gpt-5-nano';
+  const MODEL = 'google/gemini-2.5-flash-lite';
 
   // Extract a system message from the composed prompt if present
   const messages: any[] = [];

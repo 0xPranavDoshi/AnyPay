@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(payload),
     });
 
-    console.log("response", response);
+    // console.log("response", response);
 
     if (!response.ok) {
       return NextResponse.json(
