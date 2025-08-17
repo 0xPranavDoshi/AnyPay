@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
-import { getCookie, removeCookie } from "@/utils/cookie";
-import { CrossChainPayment, PaymentStatus, TokenType } from "@/lib/interface";
+import { removeCookie } from "@/utils/cookie";
+import { CrossChainPayment, TokenType } from "@/lib/interface";
 import PaymentModal from "@/components/PaymentModal";
 import TransactionModal from "@/components/TransactionModal";
 import ReactMarkdown from "react-markdown";
@@ -11,8 +11,9 @@ import remarkGfm from "remark-gfm";
 import SelectedUsers from "@/components/SelectedUsers";
 import UserMentionDropdown from "@/components/UserMentionDropdown";
 import { ethers } from "ethers";
-import { privateKeyToAccount } from "viem/accounts";
-import { wrapFetchWithPayment, decodeXPaymentResponse } from "x402-fetch";
+import { privateKeyToAccount, toAccount } from "viem/accounts";
+import { CdpClient } from "@coinbase/cdp-sdk";
+import axios from "axios";
 
 interface User {
   username: string;
@@ -642,11 +643,13 @@ export default function Dashboard() {
     try {
       // Send message to agent API with streaming
       console.log("Metioned users are", usersSelected);
+      console.log("user is", user);
       const payload: any = {
         prompt: messageContent,
         image: messageImage,
         stream: true,
         users: usersSelected,
+        userData: user,
       };
       // Refresh session on page load (first message after refresh)
       if (isFirstClientMessage) {
@@ -656,39 +659,23 @@ export default function Dashboard() {
         if (sessionId) payload.sessionID = sessionId;
       }
 
-      const account = privateKeyToAccount(
-        process.env.NEXT_PUBLIC_WALLET_PRIV_KEY as `0x${string}`
-      );
-      console.log("account", account);
-
-      const fetchWithPayment = wrapFetchWithPayment(fetch, account);
-
-      const response = await fetchWithPayment("/api/agent", {
+      // Get CDP account from server-side API to avoid browser compatibility issues
+      const cdpResponse: any = await fetch("/api/cdp-account", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ name: "AnyPayServerWallet", payload }),
       });
 
-      console.log("response:", response);
-
-      // const body = await response.json();
-      // console.log("body", body);
-
-      const paymentResponse = decodeXPaymentResponse(
-        response.headers.get("x-payment-response")!
-      );
-      console.log("paymentResponse", paymentResponse);
-
-      if (!paymentResponse.success) {
-        console.log("paymentResponse failed", paymentResponse);
-        alert("X402 Payment failed, please try again");
+      if (cdpResponse.status === 500) {
+        alert(cdpResponse.error || "Failed to process request. Try again.");
         return;
       }
+      console.log("response:", cdpResponse.body);
 
       // Handle streaming response
-      const reader = response.body?.getReader();
+      const reader = cdpResponse.body?.getReader();
       const decoder = new TextDecoder();
       let streamingContent = "";
 
@@ -871,7 +858,7 @@ export default function Dashboard() {
             )}
             <button
               onClick={handleLogout}
-              className="bg-[var(--color-primary)] text-white px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200"
+              className="bg-gradient-to-r from-blue-600 to-slate-600 text-white px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200 hover:shadow-lg hover:shadow-blue-600/30 border-0 cursor-pointer"
             >
               Disconnect
             </button>
@@ -888,32 +875,71 @@ export default function Dashboard() {
             <div className="flex gap-2 mb-6">
               <button
                 onClick={() => setActiveTab("owe")}
-                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                className={`min-w-[120px] px-6 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
                   activeTab === "owe"
                     ? "bg-gradient-to-r from-red-100 to-red-200 text-red-700 shadow-sm shadow-red-100/20 border-0"
                     : "bg-gradient-to-r from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-gradient-to-r hover:from-red-50/20 hover:to-red-100/20 hover:border-red-100/40 hover:text-red-600"
                 }`}
               >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                  />
+                </svg>
                 You Owe
               </button>
               <button
                 onClick={() => setActiveTab("owed")}
-                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                className={`min-w-[120px] px-6 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
                   activeTab === "owed"
                     ? "bg-gradient-to-r from-green-100 to-emerald-200 text-green-700 shadow-sm shadow-green-100/20 border-0"
                     : "bg-gradient-to-r from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-gradient-to-r hover:from-green-50/20 hover:to-green-100/20 hover:border-green-100/40 hover:text-green-600"
                 }`}
               >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
                 Owed To You
               </button>
               <button
                 onClick={() => setActiveTab("paid")}
-                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                className={`min-w-[120px] px-6 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
                   activeTab === "paid"
                     ? "bg-gradient-to-r from-blue-100 to-cyan-200 text-blue-700 shadow-sm shadow-blue-100/20 border-0"
                     : "bg-gradient-to-r from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-gradient-to-r hover:from-blue-50/20 hover:to-blue-100/20 hover:border-blue-100/40 hover:text-blue-600"
                 }`}
               >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                  />
+                </svg>
                 Paid
               </button>
             </div>
@@ -923,16 +949,41 @@ export default function Dashboard() {
               {activeTab === "paid" ? (
                 // Paid Payments Section
                 <div>
-
                   {paymentsLoading ? (
                     <div className="text-center py-8 text-[var(--color-text-muted)]">
-                      <div className="text-4xl mb-2">⏳</div>
+                      <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg
+                          className="w-8 h-8 text-blue-500 animate-spin"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                          />
+                        </svg>
+                      </div>
                       <p>Loading your payments...</p>
                     </div>
                   ) : paidPayments.length === 0 ? (
                     <div className="text-center py-12 text-[var(--color-text-muted)]">
                       <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <span className="text-4xl">📜</span>
+                        <svg
+                          className="w-10 h-10 text-blue-500"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
                       </div>
                       <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
                         No Payment History
@@ -951,10 +1002,12 @@ export default function Dashboard() {
                           <div className="flex items-center justify-between mb-3">
                             <div>
                               <p className="font-semibold text-[var(--color-text-primary)]">
-                                Paid to {item.recipientUser?.username || 'Unknown'}
+                                Paid to{" "}
+                                {item.recipientUser?.username || "Unknown"}
                               </p>
                               <p className="text-sm text-[var(--color-text-muted)] font-mono">
-                                {item.recipientUser?.walletAddress || item.recipient}
+                                {item.recipientUser?.walletAddress ||
+                                  item.recipient}
                               </p>
                               {item.description && (
                                 <p className="text-xs text-[var(--color-text-muted)] mt-1">
@@ -962,7 +1015,8 @@ export default function Dashboard() {
                                 </p>
                               )}
                               <p className="text-xs text-blue-500 mt-1">
-                                ✅ Completed on {new Date(item.paidAt).toLocaleDateString()}
+                                ✅ Completed on{" "}
+                                {new Date(item.paidAt).toLocaleDateString()}
                               </p>
                             </div>
                             <div className="text-right">
@@ -970,7 +1024,12 @@ export default function Dashboard() {
                                 ${item.amount.toFixed(2)}
                               </p>
                               <p className="text-xs text-[var(--color-text-muted)]">
-                                via {item.tokenType === 0 ? 'USDC' : item.tokenType === 1 ? 'CCIP-BnM' : 'CCIP-LnM'}
+                                via{" "}
+                                {item.tokenType === 0
+                                  ? "USDC"
+                                  : item.tokenType === 1
+                                  ? "CCIP-BnM"
+                                  : "CCIP-LnM"}
                               </p>
                             </div>
                           </div>
@@ -1000,26 +1059,33 @@ export default function Dashboard() {
                             
                             <div className="grid grid-cols-2 gap-4 text-xs text-[var(--color-text-muted)]">
                               <div>
-                                <span className="font-medium">From:</span> {CHAINS[item.sourceChain as keyof typeof CHAINS]?.name || item.sourceChain}
+                                <span className="font-medium">From:</span>{" "}
+                                {CHAINS[item.sourceChain as keyof typeof CHAINS]
+                                  ?.name || item.sourceChain}
                               </div>
                               <div>
-                                <span className="font-medium">To:</span> {CHAINS[item.destinationChain as keyof typeof CHAINS]?.name || item.destinationChain}
+                                <span className="font-medium">To:</span>{" "}
+                                {CHAINS[
+                                  item.destinationChain as keyof typeof CHAINS
+                                ]?.name || item.destinationChain}
                               </div>
                             </div>
 
                             {/* CCIP Tracking */}
-                            {item.messageId && item.messageId !== "pending" && item.messageId !== "direct-transfer" && (
-                              <div className="mt-2">
-                                <a
-                                  href={`https://ccip.chain.link/msg/${item.messageId}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-500 hover:text-blue-300 text-sm underline"
-                                >
-                                  🔗 Track CCIP Message →
-                                </a>
-                              </div>
-                            )}
+                            {item.messageId &&
+                              item.messageId !== "pending" &&
+                              item.messageId !== "direct-transfer" && (
+                                <div className="mt-2">
+                                  <a
+                                    href={`https://ccip.chain.link/msg/${item.messageId}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-500 hover:text-blue-300 text-sm underline"
+                                  >
+                                    🔗 Track CCIP Message →
+                                  </a>
+                                </div>
+                              )}
                           </div>
                         </div>
                       ))}
@@ -1029,16 +1095,41 @@ export default function Dashboard() {
               ) : activeTab === "owe" ? (
                 // You Owe Section
                 <div>
-
                   {paymentsLoading ? (
                     <div className="text-center py-8 text-[var(--color-text-muted)]">
-                      <div className="text-4xl mb-2">⏳</div>
+                      <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg
+                          className="w-8 h-8 text-blue-500 animate-spin"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                          />
+                        </svg>
+                      </div>
                       <p>Loading your payments...</p>
                     </div>
                   ) : youOwe.length === 0 ? (
                     <div className="text-center py-12 text-[var(--color-text-muted)]">
                       <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <span className="text-4xl">✨</span>
+                        <svg
+                          className="w-10 h-10 text-blue-500"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
                       </div>
                       <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
                         All Caught Up!
@@ -1135,9 +1226,24 @@ export default function Dashboard() {
                                 item.paymentId
                               )
                             }
-                            className="w-full bg-gradient-to-r from-red-100 to-red-200 text-red-700 py-3 rounded-lg font-semibold hover:scale-105 transition-all duration-200 hover:shadow-sm hover:shadow-red-100/20"
+                            className="w-full bg-gradient-to-r from-red-100 to-red-200 text-red-700 py-3 rounded-lg font-semibold cursor-pointer transition-all duration-200 hover:shadow-sm hover:shadow-red-100/20"
                           >
-                            💳 Pay ${item.amount.toFixed(2)} Cross-Chain
+                            <div className="flex items-center justify-center gap-2">
+                              <svg
+                                className="w-5 h-5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                                />
+                              </svg>
+                              Pay ${item.amount.toFixed(2)} Cross-Chain
+                            </div>
                           </button>
                         </div>
                       ))}
@@ -1147,16 +1253,41 @@ export default function Dashboard() {
               ) : activeTab === "owed" ? (
                 // Owed To You Section
                 <div>
-
                   {paymentsLoading ? (
                     <div className="text-center py-8 text-[var(--color-text-muted)]">
-                      <div className="text-4xl mb-2">⏳</div>
+                      <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg
+                          className="w-8 h-8 text-blue-500 animate-spin"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                          />
+                        </svg>
+                      </div>
                       <p>Loading your payments...</p>
                     </div>
                   ) : owedToYou.length === 0 ? (
                     <div className="text-center py-12 text-[var(--color-text-muted)]">
                       <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <span className="text-4xl">📋</span>
+                        <svg
+                          className="w-10 h-10 text-blue-500"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                          />
+                        </svg>
                       </div>
                       <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
                         All Settled Up!
@@ -1252,140 +1383,7 @@ export default function Dashboard() {
                     </div>
                   )}
                 </div>
-              ) : (
-                // Owed To You Section
-                <div>
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="w-12 h-12 bg-gradient-to-br from-green-50/30 to-green-100/20 rounded-xl flex items-center justify-center">
-                      <svg
-                        className="w-7 h-7 text-green-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"
-                        />
-                      </svg>
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-bold text-[var(--color-text-primary)]">
-                        Owed To You
-                      </h2>
-                      <p className="text-[var(--color-text-muted)]">
-                        People who owe you money
-                      </p>
-                    </div>
-                  </div>
-
-                  {paymentsLoading ? (
-                    <div className="text-center py-8 text-[var(--color-text-muted)]">
-                      <div className="text-4xl mb-2">⏳</div>
-                      <p>Loading your payments...</p>
-                    </div>
-                  ) : owedToYou.length === 0 ? (
-                    <div className="text-center py-12 text-[var(--color-text-muted)]">
-                      <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <span className="text-4xl">📋</span>
-                      </div>
-                      <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
-                        All Settled Up!
-                      </h3>
-                      <p className="text-[var(--color-text-muted)]">
-                        No pending payments owed to you
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {owedToYou.map((item, index) => (
-                        <div
-                          key={index}
-                          className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 hover:border-green-100/50 transition-all duration-200"
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <div>
-                              <p className="font-semibold text-[var(--color-text-primary)]">
-                                {item.user.username}
-                              </p>
-                              <p className="text-sm text-[var(--color-text-muted)] font-mono">
-                                {item.user.walletAddress}
-                              </p>
-                              {item.description && (
-                                <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                                  {item.description}
-                                </p>
-                              )}
-                            </div>
-                            <div className="text-right">
-                              <p className="text-xl font-bold text-green-400">
-                                ${item.amount.toFixed(2)}
-                              </p>
-                              <p className="text-xs text-[var(--color-text-muted)]">
-                                Pending
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Cross-chain payment tracking */}
-                          {item.crossChainPayments &&
-                            item.crossChainPayments.length > 0 && (
-                              <div className="p-2 bg-green-900/20 rounded-lg border border-green-500/30">
-                                <p className="text-xs text-green-300 mb-1">
-                                  🔗 CCIP Transactions:
-                                </p>
-                                {item.crossChainPayments.map(
-                                  (ccipTx: any, ccipIndex: number) => (
-                                    <div
-                                      key={ccipIndex}
-                                      className="text-xs text-green-200 space-y-1"
-                                    >
-                                      <div className="flex justify-between items-center">
-                                        <span>
-                                          {ccipTx.status || "Processing"}
-                                        </span>
-                                        {ccipTx.txHash && (
-                                          <a
-                                            href={`${
-                                              CHAINS[
-                                                ccipTx.sourceChain as keyof typeof CHAINS
-                                              ]?.explorerUrl || "#"
-                                            }${ccipTx.txHash}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-green-300 hover:text-green-100 underline"
-                                          >
-                                            View Tx
-                                          </a>
-                                        )}
-                                      </div>
-                                      {ccipTx.messageId &&
-                                        ccipTx.messageId !== "pending" && (
-                                          <div className="flex justify-between items-center">
-                                            <span>CCIP Message:</span>
-                                            <a
-                                              href={`https://ccip.chain.link/msg/${ccipTx.messageId}`}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="text-green-300 hover:text-green-100 underline"
-                                            >
-                                              Track CCIP
-                                            </a>
-                                          </div>
-                                        )}
-                                    </div>
-                                  )
-                                )}
-                              </div>
-                            )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -1421,7 +1419,7 @@ export default function Dashboard() {
             </div>
 
             {/* Chat Messages */}
-            <div className="flex-1 bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-3 mb-6 overflow-y-auto">
+            <div className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-3 mb-6 overflow-y-auto h-80 scrollbar-thin scrollbar-thumb-[var(--color-primary)]/20 scrollbar-track-transparent hover:scrollbar-thumb-[var(--color-primary)]/30">
               {chatHistory.length === 0 ? (
                 <div className="text-center py-8 text-[var(--color-text-muted)]">
                   <div className="mb-4">
@@ -1562,9 +1560,9 @@ export default function Dashboard() {
                     <div className="flex justify-start">
                       <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-4">
                         <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-bounce"></div>
-                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-bounce delay-100"></div>
-                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-bounce delay-200"></div>
+                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse"></div>
+                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse delay-150"></div>
+                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse delay-300"></div>
                         </div>
                       </div>
                     </div>
@@ -1590,7 +1588,7 @@ export default function Dashboard() {
                   </span>
                   <button
                     onClick={removeImage}
-                    className="text-red-400 hover:text-red-300 text-sm hover:scale-110 transition-transform duration-200"
+                    className="text-red-400 hover:text-red-300 text-sm hover:scale-110 transition-transform duration-200 cursor-pointer"
                   >
                     Remove
                   </button>
@@ -1699,7 +1697,7 @@ export default function Dashboard() {
                 <button
                   onClick={handleSendMessage}
                   disabled={(!input.trim() && !image) || isLoading}
-                  className="bg-[var(--color-primary)] text-white px-4 sm:px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200 hover:shadow-lg hover:shadow-[var(--color-primary)]/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 whitespace-nowrap"
+                  className="bg-gradient-to-r from-[var(--color-primary)] to-[#0ea5e9] text-white px-4 sm:px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200 hover:shadow-lg hover:shadow-[var(--color-primary)]/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 whitespace-nowrap border-0 cursor-pointer"
                 >
                   {isLoading ? "Sending..." : "Send"}
                 </button>

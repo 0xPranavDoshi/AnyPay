@@ -110,9 +110,9 @@ export default function UserMentionDropdown({
         {loading ? (
           <div className="px-4 py-6 text-center">
             <div className="flex items-center justify-center gap-2 mb-2">
-              <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-bounce delay-100"></div>
-              <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-bounce delay-200"></div>
+              <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse"></div>
+              <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse delay-150"></div>
+              <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse delay-300"></div>
             </div>
             <p className="text-sm text-[var(--color-text-muted)]">
               Loading users...
