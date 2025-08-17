@@ -51,6 +51,8 @@ const TOKEN_NAMES = {
   [TokenType.CCIP_LNM]: "CCIP-LnM"
 };
 
+type ModalScreen = 'payment' | 'insufficient-balance';
+
 export default function PaymentModal({ isOpen, onClose, recipientUser, amount, onConfirm }: PaymentModalProps) {
   const [sourceChain, setSourceChain] = useState<string>("");
   const [tokenType, setTokenType] = useState<TokenType | "">("");
@@ -58,11 +60,21 @@ export default function PaymentModal({ isOpen, onClose, recipientUser, amount, o
   const [walletConnected, setWalletConnected] = useState(false);
   const [currentAccount, setCurrentAccount] = useState<string>("");
   const [currentChainId, setCurrentChainId] = useState<string>("");
+  const [currentScreen, setCurrentScreen] = useState<ModalScreen>('payment');
+  const [balanceInfo, setBalanceInfo] = useState<any>(null);
+  const [onrampUrl, setOnrampUrl] = useState<string>("");
   
   // Fixed destination to Base Sepolia for fastest USDC delivery
   const destinationChain = "84532";
 
   if (!isOpen) return null;
+
+  const handleClose = () => {
+    setCurrentScreen('payment');
+    setBalanceInfo(null);
+    setOnrampUrl("");
+    onClose();
+  };
 
   const connectWallet = async () => {
     try {
@@ -135,31 +147,146 @@ export default function PaymentModal({ isOpen, onClose, recipientUser, amount, o
     }
 
     setIsProcessing(true);
-    onConfirm({
-      sourceChain,
-      destinationChain,
-      tokenType: tokenType as TokenType
-    });
+
+    try {
+      // Step 1: Check token balance
+      const balanceCheckResponse = await fetch('/api/check-balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userAddress: currentAccount,
+          chainId: sourceChain,
+          tokenType: tokenType as TokenType,
+          requiredAmount: amount
+        })
+      });
+
+      const balanceResult = await balanceCheckResponse.json();
+      
+      // Debug: Log the balance result
+      console.log('Balance check result:', balanceResult);
+      
+      // Check if the API returned an error
+      if (balanceResult.error) {
+        console.error('Balance check API error:', balanceResult.error);
+        alert('Failed to check token balance: ' + balanceResult.error);
+        setIsProcessing(false);
+        return;
+      }
+
+      if (!balanceResult.hasBalance) {
+        // Get onramp URL for insufficient balance screen
+        const onrampResponse = await fetch('/api/onramp-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            address: currentAccount,
+            blockchains: [sourceChain === "11155111" ? "ethereum" : sourceChain === "421614" ? "arbitrum" : "base"],
+            assets: ['USDC'], // Default to USDC for onramp
+            presetFiatAmount: Math.ceil(amount * 1.1), // Add 10% buffer
+            redirectUrl: window.location.href
+          })
+        });
+
+        const onrampResult = await onrampResponse.json();
+        
+        // Debug: Log what we're setting as balance info
+        console.log('Setting balance info:', balanceResult);
+        console.log('Expected fields:', {
+          hasBalance: balanceResult.hasBalance,
+          currentBalance: balanceResult.currentBalance,
+          requiredBalance: balanceResult.requiredBalance,
+          tokenSymbol: balanceResult.tokenSymbol
+        });
+        
+        // Store balance info and onramp URL, then show insufficient balance screen
+        setBalanceInfo(balanceResult);
+        setOnrampUrl(onrampResult.url || "");
+        setCurrentScreen('insufficient-balance');
+        setIsProcessing(false);
+        return;
+      }
+
+      // Step 2: Proceed with payment if balance is sufficient
+      onConfirm({
+        sourceChain,
+        destinationChain,
+        tokenType: tokenType as TokenType
+      });
+
+    } catch (error) {
+      console.error('Error during payment confirmation:', error);
+      alert('Error checking wallet balance. Please try again.');
+      setIsProcessing(false);
+    }
+  };
+
+  const handleBuyTokens = () => {
+    if (onrampUrl) {
+      window.open(onrampUrl, '_blank');
+    }
+  };
+
+  const handleRetryBalance = async () => {
+    setIsProcessing(true);
+    try {
+      // Re-check balance
+      const balanceCheckResponse = await fetch('/api/check-balance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userAddress: currentAccount,
+          chainId: sourceChain,
+          tokenType: tokenType as TokenType,
+          requiredAmount: amount
+        })
+      });
+
+      const balanceResult = await balanceCheckResponse.json();
+      
+      if (balanceResult.hasBalance) {
+        // Balance is now sufficient, proceed with payment
+        setCurrentScreen('payment');
+        setIsProcessing(false);
+        onConfirm({
+          sourceChain,
+          destinationChain,
+          tokenType: tokenType as TokenType
+        });
+      } else {
+        // Still insufficient, update balance info
+        setBalanceInfo(balanceResult);
+        setIsProcessing(false);
+      }
+    } catch (error) {
+      console.error('Error rechecking balance:', error);
+      setIsProcessing(false);
+    }
+  };
+
+  const handleBackToPayment = () => {
+    setCurrentScreen('payment');
+    setBalanceInfo(null);
+    setOnrampUrl("");
   };
 
   const availableTokens = sourceChain ? CHAINS[sourceChain as keyof typeof CHAINS].tokens : [];
 
-  return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-2xl p-6 max-w-md w-full mx-4">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-[var(--color-text-primary)]">
-            Cross-Chain Payment
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
-          >
-            ✕
-          </button>
-        </div>
+  const renderPaymentScreen = () => (
+    <>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-xl font-bold text-[var(--color-text-primary)]">
+          Cross-Chain Payment
+        </h2>
+        <button
+          onClick={handleClose}
+          className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+        >
+          ✕
+        </button>
+      </div>
 
-        <div className="space-y-4 mb-6">
+      <div className="space-y-4 mb-6">
           <div className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4">
             <div className="text-sm text-[var(--color-text-muted)] mb-1">Paying to:</div>
             <div className="font-semibold text-[var(--color-text-primary)]">{recipientUser.username}</div>
@@ -256,6 +383,113 @@ export default function PaymentModal({ isOpen, onClose, recipientUser, amount, o
              "Confirm Payment"}
           </button>
         </div>
+      </>
+    );
+
+  const renderInsufficientBalanceScreen = () => {
+    // Debug: Log balance info when rendering
+    console.log('Rendering insufficient balance screen with balanceInfo:', balanceInfo);
+    
+    return (
+      <>
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-xl font-bold text-[var(--color-text-primary)]">
+            Insufficient Balance
+          </h2>
+        <button
+          onClick={handleClose}
+          className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="space-y-6 mb-6">
+        {/* Balance Status */}
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-center">
+          <div className="text-red-400 text-5xl mb-4">⚠️</div>
+          <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
+            Not Enough {balanceInfo?.tokenSymbol}
+          </h3>
+          <p className="text-sm text-[var(--color-text-muted)] mb-4">
+            You need more tokens to complete this payment
+          </p>
+        </div>
+
+        {/* Balance Details */}
+        <div className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4">
+          <div className="flex justify-between items-center mb-3">
+            <span className="text-sm text-[var(--color-text-muted)]">Required:</span>
+            <span className="font-semibold text-[var(--color-text-primary)]">
+              {balanceInfo?.requiredBalance || 'N/A'} {balanceInfo?.tokenSymbol || 'Token'}
+            </span>
+          </div>
+          <div className="flex justify-between items-center mb-3">
+            <span className="text-sm text-[var(--color-text-muted)]">Current:</span>
+            <span className="font-semibold text-red-400">
+              {balanceInfo?.currentBalance || '0'} {balanceInfo?.tokenSymbol || 'Token'}
+            </span>
+          </div>
+          <div className="border-t border-[var(--color-border)] pt-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-[var(--color-text-muted)]">Need:</span>
+              <span className="font-bold text-[var(--color-primary)]">
+                {(parseFloat(balanceInfo?.requiredBalance || "0") - parseFloat(balanceInfo?.currentBalance || "0")).toFixed(6)} {balanceInfo?.tokenSymbol || 'Token'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Payment Info */}
+        <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl p-4">
+          <div className="text-sm text-[var(--color-text-muted)] mb-2">Payment Details:</div>
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm text-[var(--color-text-primary)]">To:</span>
+            <span className="text-sm font-semibold text-[var(--color-text-primary)]">{recipientUser.username}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-[var(--color-text-primary)]">Amount:</span>
+            <span className="text-lg font-bold text-[var(--color-primary)]">${amount.toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {/* Buy Tokens Button */}
+        {onrampUrl && (
+          <button
+            onClick={handleBuyTokens}
+            className="w-full bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/80 text-white py-3 rounded-lg font-semibold hover:scale-105 transition-all duration-200"
+          >
+            Buy {balanceInfo?.tokenSymbol} with Coinbase
+          </button>
+        )}
+
+        {/* Check Balance Again Button */}
+        <button
+          onClick={handleRetryBalance}
+          disabled={isProcessing}
+          className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] py-3 rounded-lg font-semibold hover:border-[var(--color-primary)] transition-colors disabled:opacity-50"
+        >
+          {isProcessing ? "Checking..." : "Check Balance Again"}
+        </button>
+
+        {/* Back Button */}
+        <button
+          onClick={handleBackToPayment}
+          className="w-full text-[var(--color-text-muted)] py-2 text-sm hover:text-[var(--color-text-primary)] transition-colors"
+        >
+          ← Back to Payment
+        </button>
+      </div>
+    </>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-[var(--color-bg-card)] border border-[var(--color-border)] rounded-2xl p-6 max-w-md w-full mx-4">
+        {currentScreen === 'payment' ? renderPaymentScreen() : renderInsufficientBalanceScreen()}
       </div>
     </div>
   );
