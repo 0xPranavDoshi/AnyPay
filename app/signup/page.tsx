@@ -19,6 +19,8 @@ export default function SignUp() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [isCreatingEmbeddedWallet, setIsCreatingEmbeddedWallet] =
+    useState(false);
 
   const connectWallet = async () => {
     try {
@@ -46,6 +48,30 @@ export default function SignUp() {
       setError("Failed to connect wallet. Please try again.");
     } finally {
       setIsConnecting(false);
+    }
+  };
+
+  const createEmbeddedWallet = async () => {
+    try {
+      setIsCreatingEmbeddedWallet(true);
+      setError("");
+
+      // Simulate embedded wallet creation
+      // In a real implementation, this would call your backend API
+      const mockWalletAddress =
+        "0x" +
+        Array.from({ length: 40 }, () =>
+          Math.floor(Math.random() * 16).toString(16)
+        ).join("");
+
+      setWalletAddress(mockWalletAddress);
+      setSuccess("Embedded wallet created successfully!");
+      console.log("Embedded wallet created:", mockWalletAddress);
+    } catch (error) {
+      console.error("Error creating embedded wallet:", error);
+      setError("Failed to create embedded wallet. Please try again.");
+    } finally {
+      setIsCreatingEmbeddedWallet(false);
     }
   };
 
@@ -127,7 +153,7 @@ export default function SignUp() {
           </div>
           <a
             href="/"
-            className="bg-[var(--color-primary)] text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity duration-200 animate-scale-in hover:scale-105 transform"
+            className="bg-gradient-to-r from-[var(--color-primary)]/20 to-[var(--color-primary)]/30 text-[var(--color-primary)] px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200 hover:shadow-sm hover:shadow-[var(--color-primary)]/20 border border-[var(--color-primary)]/30 cursor-pointer"
           >
             Back to Home
           </a>
@@ -193,12 +219,12 @@ export default function SignUp() {
           )}
 
           {/* Sign Up Form */}
-          <div className="animate-fade-in-up stagger-2 bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-3xl p-6 mb-6">
+          <div className="animate-fade-in-up stagger-2 bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-3xl p-4 mb-4">
             {/* Username Field */}
-            <div className="mb-4 text-left">
+            <div className="mb-3 text-left">
               <label
                 htmlFor="username"
-                className="block text-[var(--color-text-primary)] font-semibold mb-2 text-left"
+                className="block text-[var(--color-text-primary)] font-semibold mb-1 text-left"
               >
                 Choose Your Username
               </label>
@@ -208,15 +234,15 @@ export default function SignUp() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Enter your username"
-                className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 text-lg transition-all duration-300 focus:border-[var(--color-primary)] focus:shadow-lg focus:shadow-[var(--color-primary)]/20 focus:outline-none focus:scale-[1.02]"
+                className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-2.5 text-lg transition-all duration-300 focus:border-[var(--color-primary)] focus:shadow-lg focus:shadow-[var(--color-primary)]/20 focus:outline-none focus:scale-[1.02]"
               />
             </div>
 
             {/* Password Field */}
-            <div className="mb-4 text-left">
+            <div className="mb-3 text-left">
               <label
                 htmlFor="password"
-                className="block text-[var(--color-text-primary)] font-semibold mb-2 text-left"
+                className="block text-[var(--color-text-primary)] font-semibold mb-1 text-left"
               >
                 Create Password
               </label>
@@ -226,40 +252,78 @@ export default function SignUp() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
-                className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 text-lg transition-all duration-300 focus:border-[var(--color-primary)] focus:shadow-lg focus:shadow-[var(--color-primary)]/20 focus:outline-none focus:scale-[1.02]"
+                className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-2.5 text-lg transition-all duration-300 focus:border-[var(--color-primary)] focus:shadow-lg focus:shadow-[var(--color-primary)]/20 focus:outline-none focus:scale-[1.02]"
               />
             </div>
 
             {/* Wallet Connection */}
-            <div className="mb-6">
-              <h3 className="text-[var(--color-text-primary)] font-semibold mb-3 text-left">
+            <div className="mb-4">
+              <h3 className="text-[var(--color-text-primary)] font-semibold mb-2 text-left">
                 Connect Your Wallet
               </h3>
               {walletAddress ? (
-                <div className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-primary)] text-[var(--color-primary)] rounded-xl px-4 py-3 text-sm font-medium text-center">
+                <div className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-primary)] text-[var(--color-primary)] rounded-xl px-4 py-2.5 text-sm font-medium text-center">
                   Connected: {walletAddress.slice(0, 6)}...
                   {walletAddress.slice(-4)}
                 </div>
               ) : (
-                <button
-                  onClick={connectWallet}
-                  disabled={isConnecting}
-                  className="group relative cursor-pointer overflow-hidden w-full bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary)]/80 text-white px-8 py-3 rounded-xl font-bold text-lg hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--color-primary)]/30 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <span className="relative z-10 flex items-center justify-center gap-3">
-                    <span className="text-xl">🔗</span>
-                    {isConnecting ? "Connecting..." : "Connect Wallet"}
-                  </span>
-                  <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/90 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                </button>
+                <div className="space-y-2">
+                  <button
+                    onClick={connectWallet}
+                    disabled={isConnecting}
+                    className="group relative cursor-pointer overflow-hidden w-full bg-gradient-to-r from-[var(--color-primary)]/20 to-[var(--color-primary)]/30 text-[var(--color-primary)] px-8 py-2.5 rounded-xl font-bold text-lg transition-all duration-300 hover:shadow-sm hover:shadow-[var(--color-primary)]/20 border border-[var(--color-primary)]/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span className="relative z-10 flex items-center justify-center gap-3">
+                      <svg
+                        className="w-5 h-5"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z" />
+                      </svg>
+                      {isConnecting ? "Connecting..." : "Connect Wallet"}
+                    </span>
+                  </button>
+
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-[var(--color-border)]"></div>
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="px-2 bg-[var(--color-bg-card)] text-[var(--color-text-secondary)]">
+                        or
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={createEmbeddedWallet}
+                    disabled={isCreatingEmbeddedWallet}
+                    className="group relative cursor-pointer overflow-hidden w-full bg-gradient-to-br from-[var(--color-bg-secondary)] to-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] px-8 py-2.5 rounded-xl font-bold text-lg transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--color-primary)]/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <span className="relative z-10 flex items-center justify-center gap-3">
+                      <Image
+                        src="/partners/coinbase.png"
+                        alt="Coinbase"
+                        width={20}
+                        height={20}
+                        className="w-5 h-5"
+                      />
+                      {isCreatingEmbeddedWallet
+                        ? "Creating..."
+                        : "Create Coinbase Embedded Wallet"}
+                    </span>
+                    <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  </button>
+                </div>
               )}
-              <p className="text-[var(--color-text-muted)] text-sm mt-2 text-left">
-                Connect any Web3 wallet to start managing group expenses
+              <p className="text-[var(--color-text-muted)] text-sm mt-1.5 text-left">
+                Connect any Web3 wallet or create a new embedded wallet.
               </p>
             </div>
 
             {/* Sign Up Button */}
-            <div className="mb-4">
+            <div className="mb-3">
               <button
                 onClick={handleSignUp}
                 disabled={
@@ -268,7 +332,7 @@ export default function SignUp() {
                   !walletAddress ||
                   !password.trim()
                 }
-                className="group cursor-pointer relative overflow-hidden w-full bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary)]/80 text-white px-8 py-4 rounded-xl font-bold text-lg hover:scale-105 transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--color-primary)]/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                className="group cursor-pointer relative overflow-hidden w-full bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary)]/80 text-white px-8 py-3 rounded-xl font-bold text-lg transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--color-primary)]/30 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <span className="relative z-10">
                   {isSubmitting ? "Creating Account..." : "Sign Up"}

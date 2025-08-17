@@ -975,9 +975,9 @@ export default function Dashboard() {
                 <div>
                   {paymentsLoading ? (
                     <div className="text-center py-8 text-[var(--color-text-muted)]">
-                      <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <div className="w-16 h-16 bg-gradient-to-br from-[var(--color-primary)]/20 to-[var(--color-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-4">
                         <svg
-                          className="w-8 h-8 text-blue-500 animate-spin"
+                          className="w-8 h-8 text-[var(--color-primary)] animate-spin"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -986,7 +986,7 @@ export default function Dashboard() {
                             strokeLinecap="round"
                             strokeLinejoin="round"
                             strokeWidth={2}
-                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                            d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
                           />
                         </svg>
                       </div>
@@ -1123,9 +1123,9 @@ export default function Dashboard() {
                 <div>
                   {paymentsLoading ? (
                     <div className="text-center py-8 text-[var(--color-text-muted)]">
-                      <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <div className="w-16 h-16 bg-gradient-to-br from-[var(--color-primary)]/20 to-[var(--color-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-4">
                         <svg
-                          className="w-8 h-8 text-blue-500 animate-spin"
+                          className="w-8 h-8 text-[var(--color-primary)] animate-spin"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -1134,7 +1134,7 @@ export default function Dashboard() {
                             strokeLinecap="round"
                             strokeLinejoin="round"
                             strokeWidth={2}
-                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                            d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
                           />
                         </svg>
                       </div>
@@ -1281,9 +1281,9 @@ export default function Dashboard() {
                 <div>
                   {paymentsLoading ? (
                     <div className="text-center py-8 text-[var(--color-text-muted)]">
-                      <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <div className="w-16 h-16 bg-gradient-to-br from-[var(--color-primary)]/20 to-[var(--color-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-4">
                         <svg
-                          className="w-8 h-8 text-blue-500 animate-spin"
+                          className="w-8 h-8 text-[var(--color-primary)] animate-spin"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -1292,7 +1292,7 @@ export default function Dashboard() {
                             strokeLinecap="round"
                             strokeLinejoin="round"
                             strokeWidth={2}
-                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                            d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99"
                           />
                         </svg>
                       </div>
@@ -1449,7 +1449,7 @@ export default function Dashboard() {
               {chatHistory.length === 0 ? (
                 <div className="text-center py-8 text-[var(--color-text-muted)]">
                   <div className="mb-4">
-                    <div className="w-16 h-16 bg-gradient-to-br from-[var(--color-primary)]/20 to-[var(--color-primary)]/10 rounded-2xl flex items-center justify-center mx-auto">
+                    <div className="w-16 h-16 bg-gradient-to-br from-[var(--color-primary)]/20 to-[var(--color-primary)]/10 rounded-full flex items-center justify-center mx-auto mb-4">
                       <svg
                         className="w-8 h-8 text-[var(--color-primary)]"
                         fill="none"
@@ -1486,11 +1486,11 @@ export default function Dashboard() {
                       }`}
                     >
                       <div
-                        className={`max-w-xs lg:max-w-md ${
+                        className={`max-w-xs lg:max-w-md relative ${
                           message.role === "user"
-                            ? "bg-[var(--color-primary)] text-white"
+                            ? "bg-gradient-to-br from-[var(--color-primary)]/85 via-[var(--color-primary)]/75 to-[var(--color-primary)]/60 text-white shadow-lg shadow-[var(--color-primary)]/20"
                             : "bg-[var(--color-bg-secondary)] border border-[var(--color-border)] text-[var(--color-text-primary)]"
-                        } rounded-2xl p-4`}
+                        } rounded-3xl px-4 py-2`}
                       >
                         {message.image && (
                           <div className="mb-3">
@@ -1585,10 +1585,23 @@ export default function Dashboard() {
                   {isLoading && (
                     <div className="flex justify-start">
                       <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse"></div>
-                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse delay-150"></div>
-                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse delay-300"></div>
+                        <div className="flex items-center gap-3">
+                          {/* Creative Loading: Rotating Ring with Pulsing Core */}
+                          <div className="relative w-6 h-6">
+                            <div className="absolute inset-0 border-2 border-[var(--color-primary)]/30 rounded-full animate-spin"></div>
+                            <div
+                              className="absolute inset-1 border-2 border-[var(--color-primary)]/60 rounded-full animate-spin"
+                              style={{
+                                animationDirection: "reverse",
+                                animationDuration: "1.5s",
+                              }}
+                            ></div>
+                            <div className="absolute inset-2 bg-[var(--color-primary)] rounded-full animate-pulse"></div>
+                          </div>
+
+                          <span className="text-sm text-[var(--color-text-muted)] font-medium">
+                            Thinking...
+                          </span>
                         </div>
                       </div>
                     </div>

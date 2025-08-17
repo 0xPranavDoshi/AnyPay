@@ -46,10 +46,10 @@ export default function SelectedUsers({
               {/* Remove Button */}
               <button
                 onClick={() => onRemoveUser(user)}
-                className="w-5 h-5 rounded-full bg-red-500/20 hover:bg-red-500/30 flex items-center justify-center transition-colors duration-200 group-hover:scale-110"
+                className="w-5 h-5 rounded-full bg-gray-400/20 hover:bg-gray-400/30 flex items-center justify-center transition-colors duration-200 group-hover:scale-110 cursor-pointer"
                 title={`Remove @${user.username}`}
               >
-                <span className="text-red-400 text-xs font-bold">×</span>
+                <span className="text-gray-400 text-xs font-bold">×</span>
               </button>
             </div>
           ))}
