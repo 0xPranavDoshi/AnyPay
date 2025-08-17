@@ -125,12 +125,12 @@ export default function SignUp() {
               AnyPay
             </span>
           </div>
-          <button
-            onClick={() => window.history.back()}
+          <a
+            href="/"
             className="bg-[var(--color-primary)] text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity duration-200 animate-scale-in hover:scale-105 transform"
           >
             Back to Home
-          </button>
+          </a>
         </div>
       </nav>
 
