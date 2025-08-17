@@ -43,6 +43,15 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(payload),
     });
 
+    console.log("response", response);
+
+    if (!response.ok) {
+      return NextResponse.json(
+        { error: "X402 Payment Failed" },
+        { status: 500 }
+      );
+    }
+
     const paymentResponse = decodeXPaymentResponse(
       response.headers.get("x-payment-response")!
     );

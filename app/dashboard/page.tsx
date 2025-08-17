@@ -562,7 +562,7 @@ export default function Dashboard() {
       }
 
       // Get CDP account from server-side API to avoid browser compatibility issues
-      const cdpResponse = await fetch("/api/cdp-account", {
+      const cdpResponse: any = await fetch("/api/cdp-account", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -570,6 +570,10 @@ export default function Dashboard() {
         body: JSON.stringify({ name: "AnyPayServerWallet", payload }),
       });
 
+      if (cdpResponse.status === 500) {
+        alert(cdpResponse.error || "Failed to process request. Try again.");
+        return;
+      }
       console.log("response:", cdpResponse.body);
 
       // Handle streaming response
@@ -756,7 +760,7 @@ export default function Dashboard() {
             )}
             <button
               onClick={handleLogout}
-              className="bg-[var(--color-primary)] text-white px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200"
+              className="bg-gradient-to-r from-blue-600 to-slate-600 text-white px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200 hover:shadow-lg hover:shadow-blue-600/30 border-0 cursor-pointer"
             >
               Disconnect
             </button>
@@ -773,7 +777,7 @@ export default function Dashboard() {
             <div className="flex gap-2 mb-6">
               <button
                 onClick={() => setActiveTab("owe")}
-                className={`min-w-[120px] px-6 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
+                className={`min-w-[120px] px-6 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
                   activeTab === "owe"
                     ? "bg-gradient-to-r from-red-100 to-red-200 text-red-700 shadow-sm shadow-red-100/20 border-0"
                     : "bg-gradient-to-r from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-gradient-to-r hover:from-red-50/20 hover:to-red-100/20 hover:border-red-100/40 hover:text-red-600"
@@ -789,14 +793,14 @@ export default function Dashboard() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={2}
-                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"
+                    d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
                   />
                 </svg>
                 You Owe
               </button>
               <button
                 onClick={() => setActiveTab("owed")}
-                className={`min-w-[120px] px-6 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
+                className={`min-w-[120px] px-6 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
                   activeTab === "owed"
                     ? "bg-gradient-to-r from-green-100 to-emerald-200 text-green-700 shadow-sm shadow-green-100/20 border-0"
                     : "bg-gradient-to-r from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-gradient-to-r hover:from-green-50/20 hover:to-green-100/20 hover:border-green-100/40 hover:text-green-600"
@@ -819,7 +823,7 @@ export default function Dashboard() {
               </button>
               <button
                 onClick={() => setActiveTab("paid")}
-                className={`min-w-[120px] px-6 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 ${
+                className={`min-w-[120px] px-6 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
                   activeTab === "paid"
                     ? "bg-gradient-to-r from-blue-100 to-cyan-200 text-blue-700 shadow-sm shadow-blue-100/20 border-0"
                     : "bg-gradient-to-r from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-gradient-to-r hover:from-blue-50/20 hover:to-blue-100/20 hover:border-blue-100/40 hover:text-blue-600"
@@ -1316,7 +1320,7 @@ export default function Dashboard() {
             </div>
 
             {/* Chat Messages */}
-            <div className="flex-1 bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-3 mb-6 overflow-y-auto">
+            <div className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-3 mb-6 overflow-y-auto h-80 scrollbar-thin scrollbar-thumb-[var(--color-primary)]/20 scrollbar-track-transparent hover:scrollbar-thumb-[var(--color-primary)]/30">
               {chatHistory.length === 0 ? (
                 <div className="text-center py-8 text-[var(--color-text-muted)]">
                   <div className="mb-4">
@@ -1457,9 +1461,9 @@ export default function Dashboard() {
                     <div className="flex justify-start">
                       <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-4">
                         <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-bounce"></div>
-                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-bounce delay-100"></div>
-                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-bounce delay-200"></div>
+                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse"></div>
+                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse delay-150"></div>
+                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse delay-300"></div>
                         </div>
                       </div>
                     </div>
@@ -1485,7 +1489,7 @@ export default function Dashboard() {
                   </span>
                   <button
                     onClick={removeImage}
-                    className="text-red-400 hover:text-red-300 text-sm hover:scale-110 transition-transform duration-200"
+                    className="text-red-400 hover:text-red-300 text-sm hover:scale-110 transition-transform duration-200 cursor-pointer"
                   >
                     Remove
                   </button>
@@ -1594,7 +1598,7 @@ export default function Dashboard() {
                 <button
                   onClick={handleSendMessage}
                   disabled={(!input.trim() && !image) || isLoading}
-                  className="bg-[var(--color-primary)] text-white px-4 sm:px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200 hover:shadow-lg hover:shadow-[var(--color-primary)]/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 whitespace-nowrap"
+                  className="bg-gradient-to-r from-[var(--color-primary)] to-[#0ea5e9] text-white px-4 sm:px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200 hover:shadow-lg hover:shadow-[var(--color-primary)]/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 whitespace-nowrap border-0 cursor-pointer"
                 >
                   {isLoading ? "Sending..." : "Send"}
                 </button>
