@@ -1,4 +1,4 @@
-import { HardhatUserConfig } from "hardhat/config";
+// import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 import "./tasks";
 import "dotenv/config";
@@ -8,7 +8,7 @@ const ETHEREUM_SEPOLIA_RPC_URL: string = process.env.ETHEREUM_SEPOLIA_RPC || "";
 const ARBITRUM_SEPOLIA_RPC_URL: string = process.env.ARBITRUM_SEPOLIA_RPC || "";
 const BASE_SEPOLIA_RPC_URL: string = process.env.BASE_SEPOLIA_RPC || "";
 
-const config: HardhatUserConfig = {
+const config = {
   solidity: {
     version: "0.8.24",
     settings: {
