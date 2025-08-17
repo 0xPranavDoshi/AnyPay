@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
-import { getCookie, removeCookie } from "@/utils/cookie";
-import { CrossChainPayment, PaymentStatus, TokenType } from "@/lib/interface";
+import { removeCookie } from "@/utils/cookie";
+import { CrossChainPayment, TokenType } from "@/lib/interface";
 import PaymentModal from "@/components/PaymentModal";
 import TransactionModal from "@/components/TransactionModal";
 import ReactMarkdown from "react-markdown";
