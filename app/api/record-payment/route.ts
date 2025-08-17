@@ -60,7 +60,10 @@ export async function POST(req: NextRequest) {
         }],
         totalAmount: amount,
         description: "Direct USDC Transfer",
+        status: PaymentStatus.COMPLETED, // Mark as completed so it shows in Paid section
+        txHash: txHash, // Include transaction hash
         crossChainPayments: [crossChainData],
+        paidAt: new Date(), // Set paidAt timestamp
         createdAt: new Date(),
         updatedAt: new Date()
       };

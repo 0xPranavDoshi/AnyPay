@@ -71,17 +71,8 @@ export default function PaymentModal({ isOpen, onClose, recipientUser, amount, o
       return sourceChain;
     }
     
-    // For CCIP tokens, use cross-chain transfer (avoid same-chain CCIP)
-    if (sourceChain === "84532") {
-      // From Base Sepolia, go to Arbitrum Sepolia
-      return "421614";
-    } else if (sourceChain === "421614") {
-      // From Arbitrum Sepolia, go to Base Sepolia  
-      return "84532";
-    } else {
-      // From Ethereum Sepolia, go to Base Sepolia
-      return "84532";
-    }
+    // For CCIP tokens, always deliver USDC to Base Sepolia (main settlement chain)
+    return "84532"; // Base Sepolia - where recipients expect to receive USDC
   };
   
   const destinationChain = getDestinationChain(sourceChain, tokenType);

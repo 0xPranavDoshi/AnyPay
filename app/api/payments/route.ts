@@ -82,12 +82,25 @@ export async function GET(req: NextRequest) {
       };
 
       userPayments.forEach(payment => {
-        // Only use new structure: individual payment records
-        if (!payment.payer || !payment.ower || !payment.payer.walletAddress || !payment.ower.walletAddress) {
-          // Skip payments that do not have the new structure
+        // Handle both old structure (ower) and new structure (owers array)
+        let recipient = null;
+        let recipientAmount = payment.amount || payment.totalAmount || 0;
+        
+        if (payment.owers && payment.owers.length > 0) {
+          // New structure: owers array
+          recipient = payment.owers[0].user;
+          recipientAmount = payment.owers[0].amount;
+        } else if (payment.ower) {
+          // Old structure: single ower
+          recipient = payment.ower;
+        }
+        
+        if (!payment.payer || !recipient || !payment.payer.walletAddress || !recipient.walletAddress) {
+          // Skip payments that do not have proper structure
           return;
         }
-        const userIsOwer = payment.ower.walletAddress.toLowerCase() === userAddress.toLowerCase();
+        
+        const userIsOwer = recipient.walletAddress.toLowerCase() === userAddress.toLowerCase();
         const userIsPayer = payment.payer.walletAddress.toLowerCase() === userAddress.toLowerCase();
 
         if (userIsOwer) {
@@ -97,7 +110,7 @@ export async function GET(req: NextRequest) {
             dashboardData.youOwe.push({
               paymentId: payment._id,
               user: payment.payer, // Show payer info for 'You Owe'
-              amount: payment.amount,
+              amount: recipientAmount,
               description: payment.description || "Payment",
               status: payment.status,
               crossChainPayments: payment.crossChainPayments || []
@@ -110,21 +123,22 @@ export async function GET(req: NextRequest) {
           dashboardData.paidPayments.push({
             paymentId: payment._id,
             from: payment.payer, // payer is the sender
-            to: payment.ower,    // ower is the recipient
-            amount: payment.amount,
+            to: recipient,       // recipient (from owers array or ower)
+            amount: recipientAmount,
             description: payment.description || "Payment",
             txHash: payment.txHash,
-            paidAt: payment.paidAt || payment.updatedAt || new Date()
+            paidAt: payment.paidAt || payment.updatedAt || new Date(),
+            crossChainPayments: payment.crossChainPayments || []
           });
         }
 
-        if (userIsPayer) {
-          // Someone owes money to user
+        if (!userIsPayer && userIsOwer) {
+          // Someone else is paying you - this is money owed TO you
           if (payment.status !== PaymentStatus.COMPLETED) {
             dashboardData.owedToYou.push({
               paymentId: payment._id,
-              user: payment.ower, // Show ower info for 'Owed To You'
-              amount: payment.amount,
+              user: payment.payer, // Show payer info for 'Owed To You'
+              amount: recipientAmount,
               description: payment.description || "Payment",
               status: payment.status,
               crossChainPayments: payment.crossChainPayments || []

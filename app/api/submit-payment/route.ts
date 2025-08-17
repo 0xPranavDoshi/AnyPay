@@ -84,14 +84,17 @@ async function updatePaymentWithCrossChain(paymentId: string, crossChainData: an
         console.log("Creating new payment record for cross-chain CCIP transaction");
         paymentRecord = {
           _id: paymentId,
-          payer: payer,
-          ower: { walletAddress: recipientAddress }, // Person who received payment (was owed money)
-          amount: amount,
+          payer: payer, // You are the payer (sending money)
+          owers: [{ 
+            user: { walletAddress: recipientAddress }, // Recipient receives the money
+            amount: amount 
+          }],
+          totalAmount: amount,
           description: `Cross-chain payment via CCIP`,
-          status: crossChainData.messageId ? PaymentStatus.PENDING : PaymentStatus.COMPLETED, // Set based on completion
+          status: PaymentStatus.COMPLETED, // Mark as completed since payment was sent
           txHash: crossChainData.txHash,
           crossChainPayments: [crossChainData],
-          paidAt: crossChainData.messageId ? new Date() : undefined,
+          paidAt: new Date(), // Set paidAt immediately
           createdAt: new Date(),
           updatedAt: new Date()
         };
