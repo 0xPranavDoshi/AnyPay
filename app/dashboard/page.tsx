@@ -309,7 +309,7 @@ export default function Dashboard() {
         // Same-chain USDC transfer - use direct ERC20 transfer
         setTransactionState((prev) => ({
           ...prev,
-          status: "💸 Executing direct USDC transfer...",
+          status: "Executing direct USDC transfer...",
           step: 4,
         }));
 
@@ -388,7 +388,7 @@ export default function Dashboard() {
 
         setTransactionState({
           isProcessing: false,
-          status: "✅ USDC Transfer Sent!",
+          status: "USDC Transfer Sent!",
           step: 4,
           totalSteps: 4,
           txHash: tx.hash,
@@ -434,7 +434,7 @@ export default function Dashboard() {
 
         setTransactionState({
           isProcessing: false,
-          status: "✅ Cross-chain Payment Sent!",
+          status: "Cross-chain Payment Sent!",
           step: 4,
           totalSteps: 4,
           txHash: tx.hash,
@@ -477,7 +477,7 @@ export default function Dashboard() {
       console.error("Payment error:", error);
       setTransactionState({
         isProcessing: false,
-        status: `❌ Error: ${
+        status: `Error: ${
           error instanceof Error ? error.message : "Unknown error"
         }`,
         step: 0,
