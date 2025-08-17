@@ -37,11 +37,14 @@ export async function POST(request: NextRequest) {
 
     console.log("payload", payload);
 
-    const response = await fetchWithPayment("http://localhost:3000/api/agent", {
-      //url should be something like https://api.example.com/paid-endpoint
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    const response = await fetchWithPayment(
+      process.env.NEXT_PUBLIC_APP_URL + "/api/agent",
+      {
+        //url should be something like https://api.example.com/paid-endpoint
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    );
 
     // console.log("response", response);
 
