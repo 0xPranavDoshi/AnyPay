@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { removeCookie } from "@/utils/cookie";
-import { CrossChainPayment, TokenType } from "@/lib/interface";
+import { CrossChainPayment, TokenType, Payment, PaymentStatus } from "@/lib/interface";
 import PaymentModal from "@/components/PaymentModal";
 import TransactionModal from "@/components/TransactionModal";
 import ReactMarkdown from "react-markdown";
@@ -17,14 +17,7 @@ interface User {
   walletAddress: string;
 }
 
-interface Payment {
-  payer: User;
-  totalAmount: number;
-  owers: {
-    user: User;
-    amount: number;
-  }[];
-}
+// Remove local Payment interface - using the one from @/lib/interface
 
 interface ChatMessage {
   role: "user" | "bot";

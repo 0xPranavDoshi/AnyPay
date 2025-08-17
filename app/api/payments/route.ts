@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
-import { Payment } from "@/lib/interface";
+import { Payment, PaymentStatus } from "@/lib/interface";
 
 const uri = process.env.MONGODB_URI || process.env.MONGO_URL!;
 const dbName = process.env.MONGODB_DB_NAME || 'users';
@@ -11,11 +11,12 @@ async function getPaymentsForUser(userAddress: string): Promise<Payment[]> {
   const db = client.db(dbName);
   const collection = db.collection("payments");
 
-  // Find payments where user is either a payer or ower
+
+  // Only find payments where user is either a payer or ower (new structure only)
   const payments = await collection.find({
     $or: [
       { "payer.walletAddress": { $regex: new RegExp(userAddress, "i") } },
-      { "owers.user.walletAddress": { $regex: new RegExp(userAddress, "i") } }
+      { "ower.walletAddress": { $regex: new RegExp(userAddress, "i") } }
     ]
   }).sort({ createdAt: -1 }).toArray();
 
@@ -81,67 +82,53 @@ export async function GET(req: NextRequest) {
       };
 
       userPayments.forEach(payment => {
-        // Check if payment has been completed (has successful cross-chain transactions)
-        const hasCompletedTransaction = payment.crossChainPayments && 
-          payment.crossChainPayments.some((ccip: any) => 
-            ccip.status === "completed" && ccip.txHash
-          );
+        // Only use new structure: individual payment records
+        if (!payment.payer || !payment.ower || !payment.payer.walletAddress || !payment.ower.walletAddress) {
+          // Skip payments that do not have the new structure
+          return;
+        }
+        const userIsOwer = payment.ower.walletAddress.toLowerCase() === userAddress.toLowerCase();
+        const userIsOwed = payment.payer.walletAddress.toLowerCase() === userAddress.toLowerCase();
 
-        // Handle payment format (payer/owers)
-        if ('payer' in payment && 'owers' in payment) {
-          const owersArray = Array.isArray(payment.owers) ? payment.owers : [];
-          
-          // Check if user owes money (user is in owers array)
-          const userOwes = owersArray.find(ower => 
-            ower.user.walletAddress.toLowerCase() === userAddress.toLowerCase()
-          );
-          
-          if (userOwes) {
-            // If payment is completed, add to paidPayments, otherwise to youOwe
-            if (hasCompletedTransaction && payment.crossChainPayments) {
-              const completedTx = payment.crossChainPayments.find((ccip: any) => 
-                ccip.status === "completed" && ccip.txHash
-              );
-              
-              if (completedTx) {
-                dashboardData.paidPayments.push({
-                  paymentId: payment._id,
-                  recipientUser: payment.payer,
-                  amount: userOwes.amount,
-                  description: payment.description || "Payment",
-                  txHash: completedTx.txHash,
-                  messageId: completedTx.messageId,
-                  sourceChain: completedTx.sourceChain,
-                  destinationChain: completedTx.destinationChain,
-                  tokenType: completedTx.tokenType || 0,
-                  paidAt: completedTx.timestamp || payment.updatedAt || new Date()
-                });
-              }
-            } else {
-              dashboardData.youOwe.push({
-                paymentId: payment._id,
-                user: payment.payer,
-                amount: userOwes.amount,
-                description: payment.description || "Payment",
-                crossChainPayments: payment.crossChainPayments || []
-              });
-            }
-          }
-          
-          // Check if user is owed money (user is the payer)
-          if (payment.payer && payment.payer.walletAddress.toLowerCase() === userAddress.toLowerCase()) {
-            owersArray.forEach(ower => {
-              dashboardData.owedToYou.push({
-                paymentId: payment._id,
-                user: ower.user,
-                amount: ower.amount,
-                description: payment.description || "Payment",
-                crossChainPayments: payment.crossChainPayments || []
-              });
+        if (userIsOwer) {
+          // User owes money to someone
+          if (payment.status === PaymentStatus.COMPLETED) {
+            // Payment is completed
+            dashboardData.paidPayments.push({
+              paymentId: payment._id,
+              recipientUser: payment.ower,
+              payerUser: payment.payer,
+              amount: payment.amount,
+              description: payment.description || "Payment",
+              txHash: payment.txHash,
+              paidAt: payment.paidAt || payment.updatedAt || new Date()
+            });
+          } else {
+            // Payment is unpaid or pending
+            dashboardData.youOwe.push({
+              paymentId: payment._id,
+              user: payment.payer, // Show payer info for 'You Owe'
+              amount: payment.amount,
+              description: payment.description || "Payment",
+              status: payment.status,
+              crossChainPayments: payment.crossChainPayments || []
             });
           }
         }
 
+        if (userIsOwed) {
+          // Someone owes money to user
+          if (payment.status !== PaymentStatus.COMPLETED) {
+            dashboardData.owedToYou.push({
+              paymentId: payment._id,
+              user: payment.ower, // Show ower info for 'Owed To You'
+              amount: payment.amount,
+              description: payment.description || "Payment",
+              status: payment.status,
+              crossChainPayments: payment.crossChainPayments || []
+            });
+          }
+        }
       });
 
       return NextResponse.json(dashboardData);
