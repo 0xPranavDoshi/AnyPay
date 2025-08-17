@@ -24,17 +24,17 @@ const config: HardhatUserConfig = {
       url: ETHEREUM_SEPOLIA_RPC_URL,
       accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
       chainId: 11155111,
-    },
+    } as any,
     arbitrumSepolia: {
       url: ARBITRUM_SEPOLIA_RPC_URL,
       accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
       chainId: 421614,
-    },
+    } as any,
     baseSepolia: {
       url: BASE_SEPOLIA_RPC_URL,
       accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
       chainId: 84532,
-    },
+    } as any,
   },
 };
 
