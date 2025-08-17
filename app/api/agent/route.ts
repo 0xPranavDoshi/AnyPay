@@ -225,15 +225,15 @@ async function handleSaveSettlement(
       paymentData.amount !== undefined ? paymentData.amount : paymentData.totalAmount
     ) || 0;
     
-    const payment: Payment = {
-      payer: recipient, // Person who is owed money (recipient)
-      ower: sender, // Person who owes money (sender)
-      amount,
-      description: billData.splitMethod ? `Split: ${billData.splitMethod}` : "Bill split payment",
-      status: PaymentStatus.PENDING,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+          const payment: Payment = {
+        payer: recipient, // Person who is owed money (recipient)
+        owers: [{ user: sender, amount }], // Person who owes money (sender)
+        totalAmount: amount,
+        description: billData.splitMethod ? `Split: ${billData.splitMethod}` : "Bill split payment",
+        status: PaymentStatus.PENDING,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
 
     const paymentId = await insertSettlementPayment(payment);
     paymentIds.push(paymentId);
