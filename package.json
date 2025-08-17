@@ -9,8 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@coinbase/cdp-sdk": "^1.35.0",
-    "@coinbase/x402": "^0.5.1",
+    "@coinbase/cdp-sdk": "^1.8.0",
+    "@coinbase/x402": "^0.4.2",
     "@google/generative-ai": "^0.21.0",
     "@radix-ui/react-slot": "^1.2.3",
     "bcryptjs": "^3.0.2",
@@ -29,7 +29,7 @@
     "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.3.1",
     "x402-fetch": "^0.5.1",
-    "x402-next": "^0.5.2"
+    "x402-next": "^0.4.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
