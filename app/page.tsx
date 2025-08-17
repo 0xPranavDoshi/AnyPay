@@ -19,10 +19,10 @@ export default function Home() {
             </span>
           </div>
           <a
-            href="/signup"
+            href="/login"
             className="bg-[var(--color-primary)] cursor-pointer text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity duration-200 animate-scale-in hover:scale-105 transform"
           >
-            Launch App
+            Sign In
           </a>
         </div>
       </nav>
