@@ -1,117 +1,106 @@
-// Keep your external shape if you like
+// Chat-completions + tool_calls via OpenRouter
+// Minimal wrapper returning { text, toolCalls }
+
 export interface ChatMessage {
   role: 'user' | 'model';
   parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>;
 }
 
-export async function callGemini(prompt: string, imageData?: string, history: ChatMessage[] = []) {
+type ToolCall = {
+  id?: string;
+  function?: { name?: string; arguments?: string };
+};
+
+export async function callGemini(
+  prompt: string,
+  imageData?: string,
+  history: ChatMessage[] = [],
+  tools?: any[]
+) {
   if (!process.env.OPENROUTER_API_KEY) {
     throw new Error('OPENROUTER_API_KEY environment variable is required');
   }
 
-  // Convert history to OpenAI format messages
+  const MODEL = 'openai/gpt-5-nano';
+
+  // Extract a system message from the composed prompt if present
   const messages: any[] = [];
-  
-  // Add conversation history
+  const SPLIT_TOKEN = '\n\nUser: ';
+  let systemText = prompt;
+  let userText = '';
+  const idx = prompt.indexOf(SPLIT_TOKEN);
+  if (idx !== -1) {
+    systemText = prompt.slice(0, idx);
+    userText = prompt.slice(idx + SPLIT_TOKEN.length);
+  }
+
+  messages.push({ role: 'system', content: systemText });
+
+  // Map stored chat history
   for (const msg of history) {
     const role = msg.role === 'model' ? 'assistant' : 'user';
-    const content: any[] = [];
-    
-    for (const part of msg.parts) {
-      if (part.text) {
-        content.push({ type: 'text', text: part.text });
-      }
-      if (part.inlineData) {
-        content.push({
-          type: 'image_url',
-          image_url: {
-            url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
-          }
-        });
-      }
+    const textParts: string[] = [];
+    for (const p of msg.parts) {
+      if (p.text) textParts.push(p.text);
     }
-    
-    messages.push({ role, content });
+    const contentText = textParts.join('\n');
+    messages.push({ role, content: contentText });
   }
 
-  // Build current message content
-  const currentContent: any[] = [{ type: 'text', text: prompt }];
-
-  // Handle image data
+  // Current user turn with optional image attachment using image_url schema
   if (imageData) {
-    // Do not inline base64; pass URL directly as the model expects
-    currentContent.push({ type: 'image_url', image_url: { url: imageData } });
+    messages.push({
+      role: 'user',
+      content: [
+        { type: 'text', text: userText || systemText },
+        { type: 'image_url', image_url: { url: imageData } },
+      ],
+    });
+  } else {
+    messages.push({ role: 'user', content: userText || systemText });
   }
 
-  // Add current message
-  messages.push({ role: 'user', content: currentContent });
-
-  const requestBody = {
-    model: process.env.OPENROUTER_MODEL || 'openai/gpt-5-nano',
+  const body: any = {
+    model: MODEL,
     messages,
     temperature: 0.7,
-    max_tokens: 8192,
-    top_p: 0.95,
   };
 
-  console.log('Calling OpenRouter with model:', requestBody.model);
-
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://anypay.app',
-      'X-Title': 'AnyPay Receipt Splitter'
-    },
-    body: JSON.stringify(requestBody)
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenRouter API error: ${response.status} - ${errorText}`);
+  if (tools?.length) {
+    body.tools = tools;
+    body.tool_choice = 'auto';
   }
 
-  const result = await response.json();
+  console.log('Calling OpenRouter with model:', MODEL);
 
-  // Robustly extract text (flatten arrays/objects)
-  let text: string = '';
-  const choice = result?.choices?.[0] ?? {};
-  const msg = choice?.message ?? {};
-  const content = msg?.content ?? choice?.content ?? choice?.text;
-  const flatten = (node: any): string[] => {
-    if (!node) return [];
-    if (typeof node === 'string') return [node];
-    if (Array.isArray(node)) return node.flatMap(flatten);
-    if (typeof node === 'object') {
-      const keys = ['text', 'content', 'value', 'output_text'];
-      const parts: string[] = [];
-      for (const k of keys) {
-        if (typeof node[k] === 'string') parts.push(node[k]);
-        else if (node[k]) parts.push(...flatten(node[k]));
-      }
-      // some providers nest under message -> content -> [ { type, text } ]
-      for (const v of Object.values(node)) {
-        if (v && typeof v === 'object') parts.push(...flatten(v));
-      }
-      return parts;
+  try {
+    const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'http://localhost',
+        'X-Title': 'AnyPay',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const txt = await res.text();
+      throw new Error(`HTTP ${res.status} ${res.statusText}: ${txt}`);
     }
-    return [];
-  };
-  text = flatten(content).join('\n').trim();
-  if (!text || text.trim() === '') {
-    console.warn('OpenRouter returned empty text response');
-    console.warn('Finish reason:', result.choices?.[0]?.finish_reason);
-    console.warn('Full response:', JSON.stringify(result, null, 2));
-  }
 
-  return {
-    success: true,
-    text,
-    usage: {
-      promptTokens: result.usage?.prompt_tokens ?? 0,
-      completionTokens: result.usage?.completion_tokens ?? 0,
-      totalTokens: result.usage?.total_tokens ?? 0,
-    },
-  };
+    const data = await res.json();
+    const choice = data.choices?.[0];
+    const message = choice?.message || {};
+    const text = (message.content ?? '').trim();
+    const toolCalls: ToolCall[] = message.tool_calls ?? [];
+
+    return { success: true, text, toolCalls, assistantMessage: message, sentMessages: messages };
+  } catch (error) {
+    console.error('OpenRouter API error:', error);
+    throw new Error(
+      `OpenRouter API error: ${error instanceof Error ? error.message : 'Unknown error'}`
+    );
+  }
 }

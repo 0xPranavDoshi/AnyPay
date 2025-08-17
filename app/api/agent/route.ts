@@ -12,16 +12,6 @@ import { MongoClient } from "mongodb";
 import { storeImage, storeImageFromUrl } from "../../../lib/pinata";
 import { getCookie } from "@/utils/cookie-server";
 
-// Bill splitting conversation states
-type ConversationState =
-  | "INITIAL"
-  | "WAITING_FOR_PEOPLE_COUNT"
-  | "WAITING_FOR_USERNAMES"
-  | "WAITING_FOR_PAYER"
-  | "WAITING_FOR_SPLIT_METHOD"
-  | "WAITING_FOR_CONFIRMATION"
-  | "COMPLETED";
-
 interface BillSplittingData {
   totalAmount?: number;
   peopleCount?: number;
@@ -30,56 +20,118 @@ interface BillSplittingData {
   splitMethod?: "equal" | "itemwise" | "ratio" | "custom";
   splitDetails?: any;
   settlement?: Payment[] | null;
+  confirmed?: boolean;
 }
 
-// Get bill splitting conversation prompts
+// OpenAI Function Calling Tool Definitions
+const AVAILABLE_TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "updateBillSplittingData",
+      description: "Update bill splitting data including total amount, payer, split method, and confirmation status",
+      parameters: {
+        type: "object",
+        properties: {
+          totalAmount: {
+            type: "number",
+            description: "The total amount of the bill in dollars"
+          },
+          payer: {
+            type: "string",
+            description: "Username of the person who paid the bill"
+          },
+          splitMethod: {
+            type: "string",
+            enum: ["equal", "itemwise", "ratio", "custom"],
+            description: "Method for splitting the bill"
+          },
+          confirmed: {
+            type: "boolean",
+            description: "Whether the user has confirmed the settlement plan"
+          }
+        }
+      }
+    }
+  },
+  {
+    type: "function", 
+    function: {
+      name: "save_settlement",
+      description: "Save the settlement payments to the database",
+      parameters: {
+        type: "object",
+        properties: {
+          payments: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                sender: {
+                  type: "string",
+                  description: "Username of the person who owes money"
+                },
+                recipient: {
+                  type: "string", 
+                  description: "Username of the person who should receive money"
+                },
+                totalAmount: {
+                  type: "number",
+                  description: "Amount to be paid"
+                }
+              },
+              required: ["sender", "recipient", "totalAmount"]
+            },
+            description: "List of payments to save"
+          }
+        },
+        required: ["payments"]
+      }
+    }
+  }
+];
+
+// Get concise bill splitting prompt with tool-calling instructions
 function getBillSplittingPrompt(
-  state: ConversationState,
   data: BillSplittingData,
   userPrompt: string,
   justSelectedUsers?: User[]
 ): string {
-  const systemPrompts = {
-    INITIAL: `You are AnyPay, an AI assistant specialized in understanding receipts and bills from images or text to help people split expenses.
+  const currentUsers = justSelectedUsers || data.users || [];
+  const usersText = currentUsers.length > 0 ? 
+    `People involved: ${currentUsers.map(u => u.username).join(', ')}.` : 
+    'No people selected yet.';
 
-If the user provided an image URL, analyze it for the bill total (look for "Total", "Amount Due", etc.) and any itemization. If the user provided only text (e.g., "hey we want to split a $52 bill"), extract the total from the text.
+  return `You are Vitalik, a helpful and focused AI agent hired by AnyPay. AnyPay offers a way to split bills through cross-chain multi-token web3 payments between a group of people. Your goal is to help the user through this process. If you are given an image of a receipt, you should parse it and understand the itemised breakdown; confirm with the user. Show the total amount to the user and gather the following information to decide how the split would be facilitated:
+  total amount, users involved, who paid the bill (could be multiple), how is it being split (equally, item-wise, ratio-wise, etc.). Take the user through these one by one.
+  
+  Once you have this information, you should do the calculations required to create a settlement plan that just shows the user who owes who. Proceed toward achieving the goal based on the following status/progress so far. Your end goal is to understand how the user wants to split it and update AnyPay's DB using save_settlement() at the end. Once that happens, AnyPay updates their dashboard and allows them to transfer to each other.
 
-Your goals:
-1. Extract the total amount reliably from image or text
-2. Provide a concise summary of the amount you found
-3. Ask the user to @ mention all the people involved in this split (they can type @ to see available users and select them)
+  Before calling the save_settlement() tool call, just confirm the settlement with the user.
 
-Be friendly, concise, and stay focused on bill splitting. Start by clearly stating the total amount you identified, then ask them to @ mention everyone who was part of this expense.`,
+Current status:
+- Total: ${data.totalAmount ? `$${data.totalAmount.toFixed(2)}` : 'Unknown'}
+- ${usersText}
+- Payer: ${data.payer ? data.payer.username : 'Unknown'}
+- Split: ${data.splitMethod || 'Unknown'}
 
-    WAITING_FOR_PEOPLE_COUNT: `Continue helping with bill splitting. Ask the user to @ mention all the people involved in this split (they can type @ to see available users and select them).`,
+If everything in current status is known, proceed to showing the settlement plan and request user confirmation.
 
-    WAITING_FOR_USERNAMES: `The users have been selected! ${data.users ? `People involved: ${data.users.map(u => u.username).join(', ')}.` : ''} Now ask who paid the bill and how they want to split it.`,
+Tool-use policy (do not reveal to user):
+- If user provides an amount (text or image), call updateBillSplittingData({ totalAmount }).
+- If user names the payer, call updateBillSplittingData({ payer }).
+- If user specifies split method, call updateBillSplittingData({ splitMethod }).
+- When total, users, payer, and split method are all known and split is equal, compute amountPerPerson = total / users.length and create payments so non-payers owe payer their share, then call save_settlement({ payments }).
+- Users list from UI is authoritative. Once that comes in, the users involved in the status will automatically be updated.
 
-    WAITING_FOR_PAYER: `Ask who paid the bill from the list of people provided. Present the options clearly and ask them to specify which person paid.`,
+Style:
+- Be succinct, friendly and stay focused on bill splitting. 
+- Follow the flow defined by the status but don't print out the status. Nudge the user 1 step at a time. 
+- IMPORTANT: Don't ask the user for what's next. Tell them what's next.
 
-    WAITING_FOR_SPLIT_METHOD: `Ask how they want to split the bill. Options:
-- Equal: Split the total amount equally among all people
-- Item-wise: Each person pays for specific items they consumed
-- Ratio: Split based on custom percentages
-- Custom: Manual amounts for each person
+COMPLETION: Your work is done once you call save_settlement(). Say thank you and goodbye. If there is a save_settlement() tool call in the chat history, say goodbye!
 
-Explain each option briefly and ask them to choose.`,
-
-    WAITING_FOR_CONFIRMATION: `Present the settlement plan clearly showing who owes who how much money. 
-    
-${data.settlement ? 
-  `Current settlement plan:
-${data.settlement.map(p => `• ${p.sender.username} owes ${p.recipient.username}: $${p.totalAmount.toFixed(2)}`).join('\n')}
-
-Total amount being split: $${data.totalAmount?.toFixed(2) || '0.00'}` : 
-  'Settlement plan will be generated once all information is provided.'}
-
-Ask for confirmation before saving to the system.`,
-
-    COMPLETED: `The bill has been successfully split and saved! Provide a summary of the settlement.`,
-  };
-
-  return systemPrompts[state] || systemPrompts.INITIAL;
+User message: ${userPrompt}`;
 }
 
 // Upsert (cumulative) payment to MongoDB for a sender->recipient pair
@@ -133,157 +185,86 @@ async function upsertCumulativePayment(payment: Payment): Promise<string> {
   }
 }
 
-// Determine conversation state from session history
-function determineConversationState(
-  history: any[],
-  billData: BillSplittingData,
-  justSelectedUsers?: User[]
-): ConversationState {
-  if (history.length === 0) return "INITIAL";
-
-  // Only move from INITIAL if receipt total has been parsed
-  if (!billData.totalAmount) return "INITIAL";
+// Tool call handlers
+async function handleUpdateBillSplittingData(
+  params: any,
+  currentData: BillSplittingData,
+  allUsers: User[]
+): Promise<BillSplittingData> {
+  const updatedData = { ...currentData };
   
-  // If users were just selected via @ mentions, move to the appropriate next state
-  if (justSelectedUsers && justSelectedUsers.length > 0) {
-    return "WAITING_FOR_USERNAMES"; // This will show the selected users and ask for payer
+  if (params.totalAmount !== undefined) {
+    updatedData.totalAmount = params.totalAmount;
   }
   
-  // Check if we have users from conversation or just selected
-  const hasUsers = billData.users && billData.users.length > 0;
-  
-  if (!hasUsers) {
-    return "WAITING_FOR_PEOPLE_COUNT"; // Ask them to @ mention people
-  }
-  
-  // We have users, now check progression
-  if (!billData.payer) return "WAITING_FOR_PAYER";
-  if (!billData.splitMethod) return "WAITING_FOR_SPLIT_METHOD";
-  if (!billData.settlement) return "WAITING_FOR_CONFIRMATION";
-
-  return "COMPLETED";
-}
-
-// Extract bill splitting data from conversation history
-function extractBillSplittingData(history: any[], justSelectedUsers?: User[]): BillSplittingData {
-  const data: BillSplittingData = {};
-  
-  // If users were just selected via @ mentions, use them
-  if (justSelectedUsers && justSelectedUsers.length > 0) {
-    data.users = justSelectedUsers;
-    data.peopleCount = justSelectedUsers.length;
-  }
-
-  // Look for extracted data in AI responses
-  for (const message of history) {
-    if (message.role === "model" && message.parts[0]?.text) {
-      const text = message.parts[0].text;
-
-      // Extract total amount
-      if (!data.totalAmount) {
-        // 1) Prefer amounts explicitly labeled as total
-        const totalLabelRegex =
-          /(total|amount\s*due|grand\s*total)[^\$]*\$\s*([0-9]+(?:\.[0-9]{1,2})?)/i;
-        const totalLabelMatch = text.match(totalLabelRegex);
-        if (totalLabelMatch) {
-          data.totalAmount = parseFloat(totalLabelMatch[2]);
-        } else {
-          // 2) Fallback to the largest $ amount in the text
-          const allAmounts = (
-            text.match(/\$\s*([0-9]+(?:\.[0-9]{1,2})?)/g) || []
-          )
-            .map((m) => parseFloat(m.replace(/[^0-9.]/g, "")))
-            .filter((n) => !Number.isNaN(n));
-          if (allAmounts.length > 0) {
-            data.totalAmount = Math.max(...allAmounts);
-          }
-        }
-      }
-    }
-
-    if (message.role === "user" && message.parts[0]?.text) {
-      const text = message.parts[0].text.toLowerCase();
-
-      // Extract people count
-      const countMatch = text.match(/\b(\d+)\s*people|\b(\d+)\s*person/);
-      if (countMatch && !data.peopleCount) {
-        data.peopleCount = parseInt(countMatch[1] || countMatch[2]);
-      }
-
-      // Extract usernames and wallet addresses (only if not just selected via @ mentions)
-      if (!justSelectedUsers || justSelectedUsers.length === 0) {
-        const userMatches = text.match(/([a-zA-Z0-9_]+):([a-fA-F0-9x]+)/g);
-        if (userMatches && !data.users) {
-          data.users = userMatches.map((match) => {
-            const [username, walletAddress] = match.split(":");
-            return { username, walletAddress, password: "" }; // Password not needed for splitting
-          });
-        }
-      }
-
-      // Extract payer
-      if (text.includes("paid") && data.users && !data.payer) {
-        const paidUser = data.users.find((user) =>
-          text.includes(user.username.toLowerCase())
-        );
-        if (paidUser) data.payer = paidUser;
-      }
-
-      // Extract split method
-      if (
-        (text.includes("equal") || text.includes("evenly")) &&
-        !data.splitMethod
-      ) {
-        data.splitMethod = "equal";
-      } else if (text.includes("item") && !data.splitMethod) {
-        data.splitMethod = "itemwise";
-      } else if (text.includes("ratio") && !data.splitMethod) {
-        data.splitMethod = "ratio";
-      }
+  if (params.payer !== undefined) {
+    const payerUser = allUsers.find(u => u.username === params.payer);
+    if (payerUser) {
+      updatedData.payer = payerUser;
     }
   }
-
-  // Auto-generate settlement if we have all required information
-  if (data.totalAmount && data.users && data.payer && data.splitMethod && !data.settlement) {
-    data.settlement = generateSettlement(data);
+  
+  if (params.splitMethod !== undefined) {
+    updatedData.splitMethod = params.splitMethod;
   }
-
-  return data;
+  
+  if (params.splitDetails !== undefined) {
+    updatedData.splitDetails = params.splitDetails;
+  }
+  
+  if (params.confirmed !== undefined) {
+    updatedData.confirmed = params.confirmed;
+  }
+  
+  return updatedData;
 }
 
-// Generate settlement plan
-function generateSettlement(data: BillSplittingData): Payment[] | null {
-  if (!data.totalAmount || !data.users || !data.payer || !data.splitMethod) {
-    return null;
+async function handleSaveSettlement(
+  params: any,
+  allUsers: User[]
+): Promise<string[]> {
+  const paymentIds: string[] = [];
+  
+  for (const paymentData of params.payments) {
+    const sender = allUsers.find(u => u.username === paymentData.sender);
+    const recipient = allUsers.find(u => u.username === paymentData.recipient);
+    
+    if (!sender || !recipient) {
+      throw new Error(`User not found: ${paymentData.sender} or ${paymentData.recipient}`);
+    }
+    
+    const payment: Payment = {
+      sender,
+      recipient,
+      totalAmount: paymentData.totalAmount
+    };
+    
+    const paymentId = await upsertCumulativePayment(payment);
+    paymentIds.push(paymentId);
   }
-
-  const { totalAmount, users, payer, splitMethod } = data;
-
-  if (splitMethod === "equal") {
-    const amountPerPerson = totalAmount / users.length;
-
-    // Create 1:1 payments where each non-payer owes the payer
-    const payments: Payment[] = users
-      .filter((u) => u.username !== payer.username)
-      .map((debtor) => ({
-        sender: debtor,
-        recipient: payer,
-        totalAmount: amountPerPerson,
-      }));
-
-    return payments;
-  }
-
-  // For now, only implement equal split. Other methods can be added later
-  return null;
+  
+  return paymentIds;
 }
 
-// Validate settlement sums consistency (sum of all 1:1 equals total)
-function validateSettlement(settlement: Payment[], totalAmount: number): boolean {
-  const epsilon = 0.01; // tolerance for floating point arithmetic
-  const summed = settlement.reduce((acc, p) => acc + p.totalAmount, 0);
-  return Math.abs(summed - totalAmount) <= epsilon;
+// Helper to persist image via Pinata and return URL
+async function processImageInput(image: any, session: any): Promise<string | undefined> {
+  if (!image) return undefined;
+  if (typeof image === "string" && image.startsWith("data:")) {
+    const base64 = image.split(",")[1] || "";
+    const buffer = Buffer.from(base64, "base64");
+    const stored = await storeImage(buffer, "receipt.jpg");
+    session.images = Array.from(new Set([...(session.images || []), stored.url]));
+    return stored.url;
+  }
+  if (typeof image === "string" && (image.startsWith("http://") || image.startsWith("https://"))) {
+    const stored = await storeImageFromUrl(image, "receipt.jpg");
+    session.images = Array.from(new Set([...(session.images || []), stored.url]));
+    return stored.url;
+  }
+  throw new Error("Unsupported image format");
 }
+
+// Tool call handlers for OpenAI function calling
 
 export async function POST(req: NextRequest) {
   try {
@@ -309,7 +290,6 @@ export async function POST(req: NextRequest) {
     const user_id = userData.username;
 
     // 1. Handle session creation/retrieval
-    console.log("Handling session...");
     let session;
 
     if (refresh_session === true) {
@@ -325,60 +305,26 @@ export async function POST(req: NextRequest) {
       console.log("Session retrieved:", session.sessionId);
     }
 
-    // 2. Extract bill splitting data and determine conversation state
+    // 2. Initialize bill splitting data from session, overlaying UI users
     const isFirstPrompt = session.history.length === 0;
-    const billData = extractBillSplittingData(session.history, users);
-    const conversationState = determineConversationState(
-      session.history,
-      billData,
-      users
-    );
+    const existingBillData = (session as any).billData || {};
+    const billData: BillSplittingData = {
+      ...existingBillData,
+      users: users && users.length > 0 ? users : existingBillData.users || [],
+      peopleCount: users && users.length > 0 ? users.length : existingBillData.peopleCount || (existingBillData.users?.length || 0),
+    };
 
-    console.log("Conversation state:", conversationState);
     console.log("Bill data:", billData);
     let imageDataForGemini: string | undefined;
-
-    if (image) {
-      console.log("Processing first prompt with receipt image...");
-      try {
-        if (typeof image === "string" && image.startsWith("data:")) {
-          const base64 = image.split(",")[1] || "";
-          const buffer = Buffer.from(base64, "base64");
-          const stored = await storeImage(buffer, "receipt.jpg");
-          imageDataForGemini = stored.url;
-          session.images = Array.from(
-            new Set([...(session.images || []), stored.url])
-          );
-        } else if (
-          typeof image === "string" &&
-          (image.startsWith("http://") || image.startsWith("https://"))
-        ) {
-          const stored = await storeImageFromUrl(image, "receipt.jpg");
-          imageDataForGemini = stored.url;
-          session.images = Array.from(
-            new Set([...(session.images || []), stored.url])
-          );
-        } else {
-          return NextResponse.json(
-            { error: "Unsupported image format" },
-            { status: 400 }
-          );
-        }
-      } catch (pinErr) {
-        console.error("Failed to upload image to Pinata:", pinErr);
-        return NextResponse.json(
-          { error: "Agent is unreachable at the moment" },
-          { status: 502 }
-        );
-      }
-    } else {
-      console.log("Processing prompt with text-only description...");
-      imageDataForGemini = undefined;
+    try {
+      imageDataForGemini = await processImageInput(image, session);
+    } catch (pinErr) {
+      console.error("Image handling failed:", pinErr);
+      return NextResponse.json({ error: "Unsupported image format" }, { status: 400 });
     }
 
-    // 3. Get state-aware system prompt
+    // 3. Get task-based system prompt with tool calling capabilities
     const systemPrompt = getBillSplittingPrompt(
-      conversationState,
       billData,
       prompt,
       users
@@ -386,34 +332,25 @@ export async function POST(req: NextRequest) {
     const enhancedPrompt = `${systemPrompt}\n\nUser: ${prompt}`;
 
     // 4. Always call the LLM (OpenRouter)
-    let geminiResponse;
+    let geminiResponse: any;
     console.log("Calling OpenRouter...");
-    console.log("Enhanced prompt:", enhancedPrompt);
-    console.log("Has image data:", !!imageDataForGemini);
-    console.log("History length:", session.history.length);
     try {
       if (typeof imageDataForGemini !== "undefined") {
         geminiResponse = await callGemini(
           enhancedPrompt,
           imageDataForGemini,
-          session.history
+          session.history,
+          AVAILABLE_TOOLS
         );
       } else {
         geminiResponse = await callGemini(
           enhancedPrompt,
           undefined,
-          session.history
+          session.history,
+          AVAILABLE_TOOLS
         );
       }
-      console.log("OpenRouter response received successfully");
-      console.log("Response text length:", geminiResponse.text?.length || 0);
-      if (!geminiResponse.text || geminiResponse.text.trim() === "") {
-        console.error("LLM returned empty text payload");
-        return NextResponse.json(
-          { error: "Agent is unreachable at the moment" },
-          { status: 502 }
-        );
-      }
+      console.log("OpenRouter response received");
     } catch (geminiError) {
       console.error("OpenRouter API failed:", geminiError);
       return NextResponse.json(
@@ -422,48 +359,86 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 5. Check if user is confirming settlement
+    // 5. Execute tool calls from OpenAI function calling response
     let paymentIds: string[] | undefined;
-    const updatedBillData = extractBillSplittingData([
-      ...session.history,
-      { role: "user", parts: [{ text: prompt }], timestamp: new Date() },
-      {
-        role: "model",
-        parts: [{ text: geminiResponse.text }],
-        timestamp: new Date(),
-      },
-    ], users);
+    let updatedBillData = { ...billData };
 
-    // Check if user is confirming settlement (more flexible confirmation detection)
-    const isConfirming = conversationState === "WAITING_FOR_CONFIRMATION" && 
-      (prompt.toLowerCase().includes("confirm") || 
-       prompt.toLowerCase().includes("yes") || 
-       prompt.toLowerCase().includes("looks good") ||
-       prompt.toLowerCase().includes("correct") ||
-       prompt.toLowerCase().includes("save"));
+    // Prepare OpenRouter messages log to align with tool call protocol
+    const messagesLog: any[] = Array.isArray(geminiResponse.sentMessages)
+      ? [...geminiResponse.sentMessages]
+      : [];
+    if (geminiResponse.assistantMessage) {
+      messagesLog.push(geminiResponse.assistantMessage);
+    }
     
-    if (isConfirming) {
-      const settlement = generateSettlement(updatedBillData);
-      if (!settlement || !validateSettlement(settlement, updatedBillData.totalAmount || 0)) {
-        return NextResponse.json(
-          { error: "Agent is unreachable at the moment" },
-          { status: 422 }
-        );
-      }
+    // Get tool calls from OpenAI response
+    const toolCalls = geminiResponse.toolCalls || [];
+    console.log("Tool calls:", toolCalls?.length || 0);
+    
+    // Execute tool calls
+    for (const toolCall of toolCalls) {
       try {
-        const ids: string[] = [];
-        for (const p of settlement) {
-          const id = await upsertCumulativePayment(p);
-          ids.push(id);
+        const functionName = toolCall.function?.name;
+        const functionArgs = JSON.parse(toolCall.function?.arguments || '{}');
+        
+        if (functionName === "updateBillSplittingData") {
+          updatedBillData = await handleUpdateBillSplittingData(
+            functionArgs,
+            updatedBillData,
+            users || []
+          );
+          console.log("Updated bill data:", updatedBillData);
+          // Append tool message result for protocol completeness
+          messagesLog.push({
+            role: 'tool',
+            tool_call_id: (toolCall as any).id,
+            name: functionName,
+            content: JSON.stringify({ status: 'ok', billData: updatedBillData })
+          });
+        } else if (functionName === "save_settlement") {
+          paymentIds = await handleSaveSettlement(
+            functionArgs,
+            users || []
+          );
+          console.log("Payments saved with IDs:", paymentIds);
+          updatedBillData.confirmed = true;
+          messagesLog.push({
+            role: 'tool',
+            tool_call_id: (toolCall as any).id,
+            name: functionName,
+            content: JSON.stringify({ status: 'ok', paymentIds })
+          });
         }
-        paymentIds = ids;
-        console.log("Payments upserted with IDs:", paymentIds);
-      } catch (saveError) {
-        console.error("Failed to save payment:", saveError);
+      } catch (toolError) {
+        console.error(`Error executing tool ${toolCall.function?.name}:`, toolError);
         return NextResponse.json(
           { error: "Agent is unreachable at the moment" },
           { status: 500 }
         );
+      }
+    }
+    
+    // Update users in bill data from UI (single source of truth)
+    if (users && users.length > 0) {
+      updatedBillData.users = users;
+      updatedBillData.peopleCount = users.length;
+    }
+    
+    // Build a user-visible response; if model text is empty (tool-only), craft the next prompt
+    let userVisibleResponse = (geminiResponse.text || '').trim();
+    if (!userVisibleResponse) {
+      // Generate a concise next-step prompt from current state
+      const names = (updatedBillData.users || []).map(u => u.username);
+      if (!updatedBillData.totalAmount) {
+        userVisibleResponse = 'Please provide the total amount (e.g., 85.88).';
+      } else if (!updatedBillData.users || (updatedBillData.users?.length || 0) === 0) {
+        userVisibleResponse = 'Please @mention everyone involved to continue.';
+      } else if (!updatedBillData.payer) {
+        userVisibleResponse = `Who paid the bill? Choose from: ${names.join(', ')}.`;
+      } else if (!updatedBillData.splitMethod) {
+        userVisibleResponse = 'How would you like to split? Equal / Item-wise / Ratio / Custom';
+      } else {
+        userVisibleResponse = 'Noted. I have updated the details. What next?';
       }
     }
 
@@ -478,10 +453,10 @@ export async function POST(req: NextRequest) {
       timestamp: new Date(),
     };
 
-    // Create AI response message
+    // Create AI response message (with tool calls removed)
     const aiMessage = {
       role: "model" as const,
-      parts: [{ text: geminiResponse.text }],
+      parts: [{ text: userVisibleResponse }],
       timestamp: new Date(),
     };
 
@@ -491,6 +466,7 @@ export async function POST(req: NextRequest) {
       userId: session.userId,
       history: [...session.history, userMessage, aiMessage],
       images: session.images, // Keep/augment image URLs
+      billData: updatedBillData,
       updatedAt: new Date(),
     };
 
@@ -498,17 +474,29 @@ export async function POST(req: NextRequest) {
     console.log("Session updated successfully");
 
     // 7. Return response with bill splitting context
+    // Determine completion status based on tool execution
+    const isCompleted = paymentIds && paymentIds.length > 0;
+    
     const responseData = {
-      response: geminiResponse,
+      response: {
+        ...geminiResponse,
+        text: userVisibleResponse // Use clean response without tool calls
+      },
       sessionId: session.sessionId,
       messageCount: updatedSessionData.history.length,
       isFirstPrompt,
       hasImage: !!imageDataForGemini,
       billSplitting: {
-        state: conversationState,
+        completed: isCompleted,
         data: updatedBillData,
         paymentIds,
+        toolCallsExecuted: toolCalls.length,
       },
+      // For debugging and verifying tool-call message format
+      toolCallProtocol: {
+        assistantMessage: geminiResponse.assistantMessage || null,
+        toolMessages: messagesLog.filter((m: any) => m.role === 'tool'),
+      }
     };
 
     if (stream) {
@@ -517,7 +505,7 @@ export async function POST(req: NextRequest) {
       const readableStream = new ReadableStream({
         start(controller) {
           // Send the response in chunks to simulate streaming
-          const text = geminiResponse.text || "";
+          const text = userVisibleResponse || "";
           const words = text.split(' ');
           let currentText = '';
           

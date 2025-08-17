@@ -13,6 +13,8 @@ interface SessionData {
   userId: string;
   history: ChatMessage[];
   images: string[];
+  // Persist bill splitting state so the agent remembers progress
+  billData?: any;
   createdAt: Date;
   updatedAt: Date;
 }
