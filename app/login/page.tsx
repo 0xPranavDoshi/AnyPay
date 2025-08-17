@@ -57,6 +57,12 @@ export default function Login() {
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !isSubmitting && username.trim() && password.trim()) {
+      handleLogin();
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] font-['Poppins',Inter,'SF_Pro_Display',system-ui,sans-serif]">
       {/* Navigation */}
@@ -150,6 +156,7 @@ export default function Login() {
                 id="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder="Enter your username"
                 className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 text-lg transition-all duration-300 focus:border-[var(--color-primary)] focus:shadow-lg focus:shadow-[var(--color-primary)]/20 focus:outline-none focus:scale-[1.02]"
               />
@@ -168,6 +175,7 @@ export default function Login() {
                 id="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={handleKeyDown}
                 placeholder="Enter your password"
                 className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 text-lg transition-all duration-300 focus:border-[var(--color-primary)] focus:shadow-lg focus:shadow-[var(--color-primary)]/20 focus:outline-none focus:scale-[1.02]"
               />
