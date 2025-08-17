@@ -1,0 +1,21 @@
+{
+  "accounts": {
+    "testnet-account": {
+      "address": "0xe98ef0a79eb5f04e",
+      "key": "1d3ccb3d31c1025d0e3010ce4c4debeea61b8f7929f0d0722bff9945922b1c58"
+    }
+  },
+  "contracts": {
+    "HelloWorld": "./contracts/HelloWorld.cdc",
+    "TokenA": "./contracts/TokenA.cdc",
+    "TokenB": "./contracts/TokenB.cdc"
+  },
+  "networks": {
+    "testnet": "access.devnet.nodes.onflow.org:9000"
+  },
+  "deployments": {
+    "testnet": {
+      "testnet-account": ["HelloWorld", "TokenA", "TokenB"]
+    }
+  }
+}
