@@ -267,41 +267,42 @@ export default function Dashboard() {
 
       const { transactionParams, paymentId } = payResult;
 
-      // Step 2: Check/Approve token if needed
-      setTransactionState((prev) => ({
-        ...prev,
-        status: "✅ Checking token approval...",
-        step: 3,
-      }));
+      // Step 2: Check/Approve token if needed (skip for same-chain USDC)
+      const isSameChain =
+        transactionParams.isSameChain && paymentData.tokenType === 0;
 
-      const tokenContract = new ethers.Contract(
-        transactionParams.tokenAddress,
-        [
-          "function allowance(address,address) view returns (uint256)",
-          "function approve(address,uint256) returns (bool)",
-        ],
-        signer
-      );
+      if (!isSameChain) {
+        setTransactionState((prev) => ({
+          ...prev,
+          status: "✅ Checking token approval...",
+          step: 3,
+        }));
 
-      const allowance = await tokenContract.allowance(
-        userAddress,
-        transactionParams.contractAddress
-      );
-      const amountWei = ethers.BigNumber.from(transactionParams.amountWei);
-
-      if (allowance.lt(amountWei)) {
-        const approveTx = await tokenContract.approve(
-          transactionParams.contractAddress,
-          amountWei
+        const tokenContract = new ethers.Contract(
+          transactionParams.tokenAddress,
+          [
+            "function allowance(address,address) view returns (uint256)",
+            "function approve(address,uint256) returns (bool)",
+          ],
+          signer
         );
-        await approveTx.wait();
+
+        const allowance = await tokenContract.allowance(
+          userAddress,
+          transactionParams.contractAddress
+        );
+        const amountWei = ethers.BigNumber.from(transactionParams.amountWei);
+
+        if (allowance.lt(amountWei)) {
+          const approveTx = await tokenContract.approve(
+            transactionParams.contractAddress,
+            amountWei
+          );
+          await approveTx.wait();
+        }
       }
 
       // Step 3: Execute payment (cross-chain or direct transfer)
-      // Use the isSameChain flag from API response for consistency
-      // Only USDC same-chain transfers should be treated as direct transfers
-      const isSameChain =
-        transactionParams.isSameChain && paymentData.tokenType === 0;
 
       let tx;
 
@@ -397,6 +398,16 @@ export default function Dashboard() {
         });
 
         // Record the payment for same-chain transfers and refresh
+        console.log("Calling /api/record-payment with:", {
+          paymentId,
+          txHash: tx.hash,
+          sourceChain: paymentData.sourceChain,
+          recipientAddress: transactionParams.recipientAddress,
+          amount: paymentModal.amount,
+          tokenType: paymentData.tokenType,
+          payer: user,
+        });
+        
         fetch("/api/record-payment", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -410,7 +421,12 @@ export default function Dashboard() {
             payer: user,
           }),
         })
-          .then(() => {
+          .then(response => {
+            console.log("Record payment API response status:", response.status);
+            return response.json();
+          })
+          .then(data => {
+            console.log("Record payment API response data:", data);
             // Refresh payments immediately to show in paid section
             if (user) {
               fetchUserPayments(user.walletAddress);
@@ -1030,7 +1046,8 @@ export default function Dashboard() {
                           <div className="flex items-center justify-between mb-3">
                             <div>
                               <p className="font-semibold text-[var(--color-text-primary)]">
-                                Paid to {item.to?.username || "Unknown"}
+                                Paid to{" "}
+                                {item.to?.username || item.to?.walletAddress?.slice(0,6) + "..." || "Unknown"}
                               </p>
                               <p className="text-sm text-[var(--color-text-muted)] font-mono">
                                 {item.to?.walletAddress || item.recipient}
@@ -1177,6 +1194,12 @@ export default function Dashboard() {
                               <p className="text-xl font-bold text-white">
                                 ${item.amount.toFixed(2)}
                               </p>
+                              {item.crossChainPayments && 
+                               item.crossChainPayments.some((ccip: any) => ccip.status === "completed") && (
+                                <p className="text-xs text-green-400 font-semibold mt-1">
+                                  ✅ COMPLETED
+                                </p>
+                              )}
                             </div>
                           </div>
 
@@ -1233,14 +1256,23 @@ export default function Dashboard() {
                             )}
 
                           <button
-                            onClick={() =>
+                            onClick={item.crossChainPayments && 
+                                     item.crossChainPayments.some((ccip: any) => ccip.status === "completed") 
+                                     ? undefined : () =>
                               handlePayUser(
                                 item.user,
                                 item.amount,
                                 item.paymentId
                               )
                             }
-                            className="w-full bg-gradient-to-r from-red-300/20 to-red-300/30 text-red-300 py-3 rounded-lg font-semibold cursor-pointer transition-all duration-200 hover:shadow-sm hover:shadow-red-300/20 border border-red-300/30"
+                            disabled={item.crossChainPayments && 
+                                     item.crossChainPayments.some((ccip: any) => ccip.status === "completed")}
+                            className={`w-full py-3 rounded-lg font-semibold transition-all duration-200 border ${
+                              item.crossChainPayments && 
+                              item.crossChainPayments.some((ccip: any) => ccip.status === "completed")
+                                ? "bg-gradient-to-r from-green-300/20 to-green-300/30 text-green-300 cursor-not-allowed border-green-300/30"
+                                : "bg-gradient-to-r from-red-300/20 to-red-300/30 text-red-300 cursor-pointer hover:shadow-sm hover:shadow-red-300/20 border-red-300/30"
+                            }`}
                           >
                             <div className="flex items-center justify-center gap-2">
                               <svg
@@ -1256,7 +1288,9 @@ export default function Dashboard() {
                                   d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
                                 />
                               </svg>
-                              Pay ${item.amount.toFixed(2)} Cross-Chain
+                              {item.crossChainPayments && 
+                               item.crossChainPayments.some((ccip: any) => ccip.status === "completed") 
+                                ? "PAID" : "Pay"} ${item.amount.toFixed(2)} Cross-Chain
                             </div>
                           </button>
                         </div>

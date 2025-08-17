@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
         _id: paymentId,
         payer: payer,
         owers: [{
-          user: { walletAddress: recipientAddress },
+          user: { walletAddress: recipientAddress, username: recipientAddress.slice(0,6) + "..." },
           amount: amount
         }],
         totalAmount: amount,
@@ -68,9 +68,47 @@ export async function POST(req: NextRequest) {
         updatedAt: new Date()
       };
 
-      // Try to insert the payment record
+      // First try to find and update existing pending payment where user owes money
+      const existingPaymentQuery = {
+        $and: [
+          { "owers.user.walletAddress": payer.walletAddress.toLowerCase() }, // User is the ower (owes money)
+          { status: { $ne: PaymentStatus.COMPLETED } }         // Payment not yet completed
+        ]
+      };
+      
+      const existingPayment = await collection.findOne(existingPaymentQuery);
+      
+      if (existingPayment) {
+        console.log("Found existing payment to update:", existingPayment._id);
+        
+        // Update the existing payment to mark as completed
+        await collection.updateOne(
+          { _id: existingPayment._id },
+          { 
+            $set: { 
+              status: PaymentStatus.COMPLETED,
+              txHash: txHash,
+              paidAt: new Date(),
+              updatedAt: new Date()
+            },
+            $push: { crossChainPayments: crossChainData } as any
+          }
+        );
+        
+        console.log("Updated existing same-chain payment:", existingPayment._id);
+        
+        return NextResponse.json({
+          success: true,
+          paymentId: existingPayment._id,
+          txHash,
+          status: PaymentStatus.COMPLETED,
+          updated: true
+        });
+      }
+      
+      // If no existing payment found, create new record
       await collection.insertOne(paymentRecord);
-      console.log("Created payment record for same-chain transfer:", paymentId);
+      console.log("Created new payment record for same-chain transfer:", paymentId);
 
       return NextResponse.json({
         success: true,

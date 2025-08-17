@@ -36,14 +36,17 @@ export interface CrossChainPayment {
 
 export interface Payment {
   _id?: string;
-  payer: User;
-  ower: User;
-  amount: number;
+  payer?: User;
+  owers?: {
+    user: User;
+    amount: number;
+  }[];
+  totalAmount: number;
   description?: string;
-  status: PaymentStatus;
+  status?: PaymentStatus;
   txHash?: string;
   crossChainPayments?: CrossChainPayment[];
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
   paidAt?: Date;
 }

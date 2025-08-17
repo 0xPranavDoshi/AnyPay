@@ -128,7 +128,8 @@ export async function GET(req: NextRequest) {
             description: payment.description || "Payment",
             txHash: payment.txHash,
             paidAt: payment.paidAt || payment.updatedAt || new Date(),
-            crossChainPayments: payment.crossChainPayments || []
+            crossChainPayments: payment.crossChainPayments || [],
+            tokenType: payment.crossChainPayments?.[0]?.tokenType || 0 // Get tokenType from crossChainPayments
           });
         }
 

@@ -55,7 +55,7 @@ async function updatePaymentWithCrossChain(paymentId: string, crossChainData: an
     const result = await collection.updateOne(
       query,
       { 
-        $push: { crossChainPayments: crossChainData },
+        $push: { crossChainPayments: crossChainData } as any,
         $set: { updatedAt: new Date() }
       }
     );
@@ -63,7 +63,60 @@ async function updatePaymentWithCrossChain(paymentId: string, crossChainData: an
     console.log("Update result:", { paymentId, matchedCount: result.matchedCount, modifiedCount: result.modifiedCount });
     
     if (result.matchedCount === 0) {
-      console.log("No payment found with ID:", paymentId, "- creating new payment record");
+      console.log("No payment found with ID:", paymentId, "- checking for existing debt to update");
+      
+      // First try to find existing payment where user owes money to this recipient
+      if (payer && recipientAddress && amount) {
+        console.log("Searching for existing debt:", {
+          payerWallet: payer.walletAddress.toLowerCase(),
+          recipientAddress: recipientAddress.toLowerCase(),
+          amount
+        });
+        
+        // Find all payments where user is the ower (owes money)
+        const allDebts = await collection.find({
+          "owers.user.walletAddress": payer.walletAddress.toLowerCase(),
+          status: { $ne: PaymentStatus.COMPLETED }
+        }).toArray();
+        
+        console.log("Found uncompleted debts:", allDebts.length);
+        allDebts.forEach(debt => {
+          console.log("Debt:", {
+            id: debt._id,
+            payer: debt.payer?.walletAddress,
+            amount: debt.totalAmount || debt.amount,
+            owers: debt.owers?.map((o: any) => ({ wallet: o.user.walletAddress, amount: o.amount }))
+          });
+        });
+        
+        // For now, update the first matching debt (we can make this more specific later)
+        const existingDebt = allDebts[0];
+        
+        if (existingDebt) {
+          console.log("Updating existing debt:", existingDebt._id);
+          
+          // Update the existing debt to mark as completed
+          await collection.updateOne(
+            { _id: existingDebt._id },
+            { 
+              $set: { 
+                status: PaymentStatus.COMPLETED,
+                txHash: crossChainData.txHash,
+                paidAt: new Date(),
+                updatedAt: new Date()
+              },
+              $push: { crossChainPayments: crossChainData } as any
+            }
+          );
+          
+          console.log("Updated existing debt to completed status");
+          return; // Exit early, don't create new record
+        } else {
+          console.log("No existing debt found for user");
+        }
+      }
+      
+      console.log("No existing debt found, creating new payment record");
       
       // Create payment record for both same-chain and cross-chain transactions
       let paymentRecord: any;
@@ -86,7 +139,7 @@ async function updatePaymentWithCrossChain(paymentId: string, crossChainData: an
           _id: paymentId,
           payer: payer, // You are the payer (sending money)
           owers: [{ 
-            user: { walletAddress: recipientAddress }, // Recipient receives the money
+            user: { walletAddress: recipientAddress, username: recipientAddress.slice(0,6) + "..." }, // Recipient receives the money
             amount: amount 
           }],
           totalAmount: amount,
@@ -112,7 +165,7 @@ async function updatePaymentWithCrossChain(paymentId: string, crossChainData: an
               query, // Use the same query object
               { 
                 $setOnInsert: paymentRecord,
-                $push: { crossChainPayments: crossChainData },
+                $push: { crossChainPayments: crossChainData } as any,
                 $set: { updatedAt: new Date() }
               },
               { upsert: true }
