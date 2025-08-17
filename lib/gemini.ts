@@ -15,7 +15,8 @@ export async function callGemini(
   prompt: string,
   imageData?: string,
   history: ChatMessage[] = [],
-  tools?: any[]
+  tools?: any[],
+  preMessages?: any[]
 ) {
   if (!process.env.OPENROUTER_API_KEY) {
     throw new Error('OPENROUTER_API_KEY environment variable is required');
@@ -45,6 +46,13 @@ export async function callGemini(
     }
     const contentText = textParts.join('\n');
     messages.push({ role, content: contentText });
+  }
+
+  // Inject assistant/tool protocol messages from previous turn(s) if provided
+  if (preMessages && Array.isArray(preMessages) && preMessages.length > 0) {
+    for (const m of preMessages) {
+      messages.push(m);
+    }
   }
 
   // Current user turn with optional image attachment using image_url schema

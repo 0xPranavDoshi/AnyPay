@@ -106,7 +106,7 @@ function getBillSplittingPrompt(
   
   Once you have this information, you should do the calculations required to create a settlement plan that just shows the user who owes who. Proceed toward achieving the goal based on the following status/progress so far. Your end goal is to understand how the user wants to split it and update AnyPay's DB using save_settlement() at the end. Once that happens, AnyPay updates their dashboard and allows them to transfer to each other.
 
-  Before calling the save_settlement() tool call, just confirm the settlement with the user.
+  Before calling the save_settlement() tool call, just confirm the settlement with the user. Once user confirms the plan, call save_settlement({ payments }).
 
 Current status:
 - Total: ${data.totalAmount ? `$${data.totalAmount.toFixed(2)}` : 'Unknown'}
@@ -120,7 +120,7 @@ Tool-use policy (do not reveal to user):
 - If user provides an amount (text or image), call updateBillSplittingData({ totalAmount }).
 - If user names the payer, call updateBillSplittingData({ payer }).
 - If user specifies split method, call updateBillSplittingData({ splitMethod }).
-- When total, users, payer, and split method are all known and split is equal, compute amountPerPerson = total / users.length and create payments so non-payers owe payer their share, then call save_settlement({ payments }).
+- If billSplittingData is filled and plan is confirmed, call save_settlement({ payments }).
 - Users list from UI is authoritative. Once that comes in, the users involved in the status will automatically be updated.
 
 Style:
@@ -128,7 +128,7 @@ Style:
 - Follow the flow defined by the status but don't print out the status. Nudge the user 1 step at a time. 
 - ALWAYS provide a text response to the user, even when calling tools.
 
-COMPLETION: Your work is done once you call save_settlement(). Say thank you and goodbye. If there is a save_settlement() tool call in the chat history, say goodbye!
+COMPLETION: Your work is done once you call save_settlement(). Say thank you and goodbye.
 
 User message: ${userPrompt}`;
 }
@@ -374,6 +374,8 @@ export async function POST(req: NextRequest) {
     // 5. Execute tool calls from OpenAI function calling response
     let paymentIds: string[] | undefined;
     let updatedBillData = { ...billData };
+    const toolSummaries: string[] = [];
+    let additionalToolCallsExecuted = 0;
 
     // Prepare OpenRouter messages log to align with tool call protocol
     const messagesLog: any[] = Array.isArray(geminiResponse.sentMessages)
@@ -407,6 +409,10 @@ export async function POST(req: NextRequest) {
             name: functionName,
             content: JSON.stringify({ status: 'ok', billData: updatedBillData })
           });
+          try {
+            const keys = Object.keys(functionArgs || {}).join(', ');
+            toolSummaries.push(`[tool updateBillSplittingData] status: ok${keys ? `, updated: ${keys}` : ''}`);
+          } catch {}
         } else if (functionName === "save_settlement") {
           paymentIds = await handleSaveSettlement(
             functionArgs,
@@ -421,6 +427,7 @@ export async function POST(req: NextRequest) {
             name: functionName,
             content: JSON.stringify({ status: 'ok', paymentIds })
           });
+          toolSummaries.push(`[tool save_settlement] status: ok${paymentIds && paymentIds.length ? `, paymentIds: ${paymentIds.join(', ')}` : ''}`);
         }
       } catch (toolError) {
         console.error(`Error executing tool ${toolCall.function?.name}:`, toolError);
@@ -437,8 +444,99 @@ export async function POST(req: NextRequest) {
       updatedBillData.peopleCount = users.length;
     }
     
-    // Build a user-visible response; if model text is empty, show error
+    // Build a user-visible response; if model text is empty, retry and allow more tool calls
     let userVisibleResponse = (geminiResponse.text || '').trim();
+    if (!userVisibleResponse) {
+      try {
+        const followupSystem = `Please complete your previous reply with a short, user-facing message. Keep it helpful.`;
+        const followupPrompt = `${followupSystem}\n\nUser: ${prompt}`;
+
+        // Provide assistant + tool outputs so the model knows tools succeeded
+        const assistantAndToolMessages = [
+          ...(geminiResponse.assistantMessage ? [geminiResponse.assistantMessage] : []),
+          ...messagesLog.filter((m: any) => m.role === 'tool'),
+        ];
+
+        const retry = await callGemini(
+          followupPrompt,
+          undefined,
+          session.history,
+          AVAILABLE_TOOLS,
+          assistantAndToolMessages
+        );
+        // Execute any tool calls returned in the retry (e.g., save_settlement)
+        const retryToolCalls = retry.toolCalls || [];
+        if ((retryToolCalls?.length || 0) > 0) {
+          console.log('Retry tool calls:', retryToolCalls.length);
+          if ((retry as any)?.assistantMessage) {
+            messagesLog.push((retry as any).assistantMessage);
+          }
+          for (const toolCall of retryToolCalls) {
+            try {
+              const functionName = toolCall.function?.name;
+              const functionArgs = JSON.parse(toolCall.function?.arguments || '{}');
+              if (functionName === 'updateBillSplittingData') {
+                updatedBillData = await handleUpdateBillSplittingData(
+                  functionArgs,
+                  updatedBillData,
+                  users || []
+                );
+                messagesLog.push({
+                  role: 'tool',
+                  tool_call_id: (toolCall as any).id,
+                  name: functionName,
+                  content: JSON.stringify({ status: 'ok', billData: updatedBillData })
+                });
+                try {
+                  const keys = Object.keys(functionArgs || {}).join(', ');
+                  toolSummaries.push(`[tool updateBillSplittingData] status: ok${keys ? `, updated: ${keys}` : ''}`);
+                } catch {}
+              } else if (functionName === 'save_settlement') {
+                paymentIds = await handleSaveSettlement(
+                  functionArgs,
+                  users || [],
+                  updatedBillData
+                );
+                updatedBillData.confirmed = true;
+                messagesLog.push({
+                  role: 'tool',
+                  tool_call_id: (toolCall as any).id,
+                  name: functionName,
+                  content: JSON.stringify({ status: 'ok', paymentIds })
+                });
+                toolSummaries.push(`[tool save_settlement] status: ok${paymentIds && paymentIds.length ? `, paymentIds: ${paymentIds.join(', ')}` : ''}`);
+              }
+              additionalToolCallsExecuted += 1;
+            } catch (retryToolErr) {
+              console.error('Error executing retry tool call:', retryToolErr);
+            }
+          }
+          // Nudge once more to produce a user-facing message after executing tools
+          const assistantAndToolMessages2 = [
+            ...messagesLog.filter((m: any) => m.role === 'assistant' || m.role === 'tool')
+          ];
+          const retry2 = await callGemini(
+            followupPrompt,
+            undefined,
+            session.history,
+            AVAILABLE_TOOLS,
+            assistantAndToolMessages2
+          );
+          userVisibleResponse = (retry2.text || '').trim() || userVisibleResponse;
+          if ((retry2 as any)?.assistantMessage) {
+            (geminiResponse as any).assistantMessageFallback2 = (retry2 as any).assistantMessage;
+          }
+        } else {
+          userVisibleResponse = (retry.text || '').trim() || userVisibleResponse;
+        }
+        if ((retry as any)?.assistantMessage) {
+          (geminiResponse as any).assistantMessageFallback = (retry as any).assistantMessage;
+        }
+      } catch (retryErr) {
+        console.warn('Follow-up text-only call failed:', retryErr);
+      }
+    }
+
     if (!userVisibleResponse) {
       userVisibleResponse = 'Agent unreachable.';
     }
@@ -454,6 +552,15 @@ export async function POST(req: NextRequest) {
       timestamp: new Date(),
     };
 
+    // Optional: summarize executed tool calls as a compact model message
+    const toolSummaryMessage = toolSummaries.length
+      ? {
+          role: "model" as const,
+          parts: [{ text: toolSummaries.join("\n") }],
+          timestamp: new Date(),
+        }
+      : null;
+
     // Create AI response message (with tool calls removed)
     const aiMessage = {
       role: "model" as const,
@@ -465,7 +572,12 @@ export async function POST(req: NextRequest) {
     const updatedSessionData = {
       sessionId: session.sessionId,
       userId: session.userId,
-      history: [...session.history, userMessage, aiMessage],
+      history: [
+        ...session.history,
+        userMessage,
+        ...(toolSummaryMessage ? [toolSummaryMessage] : []),
+        aiMessage,
+      ],
       images: session.images, // Keep/augment image URLs
       billData: updatedBillData,
       updatedAt: new Date(),
@@ -491,7 +603,7 @@ export async function POST(req: NextRequest) {
         completed: isCompleted,
         data: updatedBillData,
         paymentIds,
-        toolCallsExecuted: toolCalls.length,
+        toolCallsExecuted: toolCalls.length + additionalToolCallsExecuted,
       },
       // For debugging and verifying tool-call message format
       toolCallProtocol: {

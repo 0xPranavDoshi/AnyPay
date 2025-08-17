@@ -746,6 +746,12 @@ export default function Dashboard() {
                   if (parsed.sessionId) {
                     setSessionId(parsed.sessionId);
                   }
+                  
+                  // Check if settlement was completed and refresh payments
+                  if (parsed.billSplitting?.completed && user?.walletAddress) {
+                    console.log("Settlement completed, refreshing payments...");
+                    fetchUserPayments(user.walletAddress);
+                  }
                 }
               } catch (e) {
                 console.error("Error parsing streaming data:", e);
