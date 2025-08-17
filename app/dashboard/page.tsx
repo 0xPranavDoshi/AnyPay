@@ -13,7 +13,6 @@ import UserMentionDropdown from "@/components/UserMentionDropdown";
 import { ethers } from "ethers";
 import { privateKeyToAccount, toAccount } from "viem/accounts";
 import { CdpClient } from "@coinbase/cdp-sdk";
-import { withPaymentInterceptor, decodeXPaymentResponse } from "x402-axios";
 import axios from "axios";
 
 interface User {

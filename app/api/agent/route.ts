@@ -135,8 +135,8 @@ COMPLETION: Your work is done once you call save_settlement(). Say thank you and
 User message: ${userPrompt}`;
 }
 
-// Upsert (cumulative) payment to MongoDB for a sender->recipient pair
-async function upsertCumulativePayment(payment: Payment): Promise<string> {
+// Insert a single non-cumulative settlement payment document
+async function insertSettlementPayment(payment: Payment): Promise<string> {
   try {
     if (!process.env.MONGODB_URI || !process.env.MONGODB_DB_NAME) {
       throw new Error("MongoDB configuration missing");
@@ -147,39 +147,19 @@ async function upsertCumulativePayment(payment: Payment): Promise<string> {
     const db = client.db(process.env.MONGODB_DB_NAME);
     const collection = db.collection("payments");
 
-    const query = {
-      "sender.username": payment.sender.username,
-      "recipient.username": payment.recipient.username,
-    } as const;
+    const doc = {
+      ...payment,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as any;
 
-    const existing = await collection.findOne(query);
-
-    if (existing) {
-      const result = await collection.findOneAndUpdate(
-        query,
-        {
-          $inc: { totalAmount: payment.totalAmount },
-          $set: { updatedAt: new Date() },
-        },
-        { returnDocument: "after" }
-      );
-      await client.close();
-      return (result?._id || existing._id).toString();
-    } else {
-      const doc = {
-        ...payment,
-        status: "pending",
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      };
-      const insert = await collection.insertOne(doc);
-      await client.close();
-      return insert.insertedId.toString();
-    }
+    const insert = await collection.insertOne(doc);
+    await client.close();
+    return insert.insertedId.toString();
   } catch (error) {
-    console.error("Error upserting payment:", error);
+    console.error("Error inserting settlement payment:", error);
     throw new Error(
-      `Failed to upsert payment: ${
+      `Failed to insert settlement payment: ${
         error instanceof Error ? error.message : "Unknown error"
       }`
     );
@@ -222,29 +202,51 @@ async function handleUpdateBillSplittingData(
 
 async function handleSaveSettlement(
   params: any,
-  allUsers: User[]
+  allUsers: User[],
+  billData: BillSplittingData
 ): Promise<string[]> {
-  const paymentIds: string[] = [];
-  
+  // Build a single Payment document per settlement with payer + owers
+  let payer: User | undefined = billData.payer;
+  const owerMap = new Map<string, { user: User; amount: number }>();
+
   for (const paymentData of params.payments) {
-    const sender = allUsers.find(u => u.username === paymentData.sender);
-    const recipient = allUsers.find(u => u.username === paymentData.recipient);
-    
+    const sender = allUsers.find((u) => u.username === paymentData.sender);
+    const recipient = allUsers.find((u) => u.username === paymentData.recipient);
+
     if (!sender || !recipient) {
-      throw new Error(`User not found: ${paymentData.sender} or ${paymentData.recipient}`);
+      throw new Error(
+        `User not found: ${paymentData.sender} or ${paymentData.recipient}`
+      );
     }
-    
-    const payment: Payment = {
-      sender,
-      recipient,
-      totalAmount: paymentData.totalAmount
-    };
-    
-    const paymentId = await upsertCumulativePayment(payment);
-    paymentIds.push(paymentId);
+
+    if (!payer) payer = recipient; // Infer if not already set
+
+    const key = sender.username;
+    const prev = owerMap.get(key);
+    const amt = Number(paymentData.totalAmount) || 0;
+    if (prev) {
+      prev.amount += amt;
+    } else {
+      owerMap.set(key, { user: sender, amount: amt });
+    }
   }
-  
-  return paymentIds;
+
+  if (!payer) {
+    throw new Error("Payer not specified for settlement");
+  }
+
+  const owers = Array.from(owerMap.values());
+  const totalAmount = billData.totalAmount || owers.reduce((sum, o) => sum + (o.amount || 0), 0);
+
+  const settlementPayment: Payment = {
+    payer,
+    owers,
+    totalAmount,
+    description: billData.splitMethod ? `Split: ${billData.splitMethod}` : undefined,
+  };
+
+  const paymentId = await insertSettlementPayment(settlementPayment);
+  return [paymentId];
 }
 
 // Helper to persist image via Pinata and return URL
@@ -408,7 +410,8 @@ export async function POST(req: NextRequest) {
         } else if (functionName === "save_settlement") {
           paymentIds = await handleSaveSettlement(
             functionArgs,
-            users || []
+            users || [],
+            updatedBillData
           );
           console.log("Payments saved with IDs:", paymentIds);
           updatedBillData.confirmed = true;
