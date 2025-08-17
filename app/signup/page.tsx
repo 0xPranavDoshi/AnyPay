@@ -7,11 +7,7 @@ import { setCookie } from "@/utils/cookie";
 // Extend Window interface to include ethereum
 declare global {
   interface Window {
-    ethereum?: {
-      request: (args: { method: string; params?: any[] }) => Promise<any>;
-      on: (event: string, callback: (params: any) => void) => void;
-      removeListener: (event: string, callback: (params: any) => void) => void;
-    };
+    ethereum?: any;
   }
 }
 
@@ -117,8 +113,17 @@ export default function SignUp() {
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-[rgba(15,15,35,0.9)] backdrop-blur-[20px] border-b border-[var(--color-border)] px-8 py-4">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="animate-bounce-in text-2xl font-bold text-[var(--color-primary)] tracking-tight">
-            AnyPay
+          <div className="animate-bounce-in flex items-center gap-3">
+            <Image
+              src="/anypay-logo.svg"
+              alt="AnyPay Logo"
+              width={60}
+              height={60}
+              className="h-10 w-10 hover:scale-105 transition-transform duration-300"
+            />
+            <span className="text-2xl font-bold text-[var(--color-primary)] tracking-tight">
+              AnyPay
+            </span>
           </div>
           <button
             onClick={() => window.history.back()}

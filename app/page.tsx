@@ -6,8 +6,17 @@ export default function Home() {
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-[rgba(15,15,35,0.9)] backdrop-blur-[20px] border-b border-[var(--color-border)] px-8 py-4">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="animate-bounce-in text-2xl font-bold text-[var(--color-primary)] tracking-tight">
-            AnyPay
+          <div className="animate-bounce-in flex items-center gap-3">
+            <Image
+              src="/anypay-logo.svg"
+              alt="AnyPay Logo"
+              width={60}
+              height={60}
+              className="h-10 w-10 hover:scale-105 transition-transform duration-300"
+            />
+            <span className="text-2xl font-bold text-[var(--color-primary)] tracking-tight">
+              AnyPay
+            </span>
           </div>
           <a
             href="/signup"
@@ -381,11 +390,14 @@ export default function Home() {
         <div className="max-w-7xl mx-auto text-center relative z-10">
           {/* Enhanced logo section */}
           <div className="mb-12">
-            <div className="animate-fade-in-up text-3xl font-bold text-[var(--color-primary)] mb-6 tracking-tight relative inline-block">
-              <span className="relative">
-                AnyPay
-                <div className="absolute -bottom-2 left-0 right-0 h-1 bg-gradient-to-r from-[var(--color-primary)]/30 to-[var(--color-primary)]/60 rounded-full"></div>
-              </span>
+            <div className="animate-fade-in-up mb-6 relative inline-block">
+              <Image
+                src="/anypay-logo.svg"
+                alt="AnyPay Logo"
+                width={240}
+                height={72}
+                className="h-16 w-auto hover:scale-105 transition-transform duration-300"
+              />
             </div>
 
             {/* Enhanced description */}

@@ -1,5 +1,6 @@
 export const runtime = "nodejs";
 
+import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import {
   getSession,
@@ -268,25 +269,34 @@ async function processImageInput(image: any, session: any): Promise<string | und
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, image, sessionID, refresh_session, stream = false, users } = await req.json();
-
-    const userCookie = getCookie("user");
+    const {
+      prompt,
+      image,
+      sessionID,
+      refresh_session,
+      stream = false,
+      users,
+      userData,
+    } = await req.json();
 
     if (!prompt && !image) {
       return NextResponse.json(
-        { error: "Missing required fields: either prompt or image are required" },
+        {
+          error: "Missing required fields: either prompt or image are required",
+        },
         { status: 400 }
       );
     }
 
-    const userCookieValue = await userCookie;
-    if (!userCookieValue) {
+    if (!userData) {
       return NextResponse.json(
-        { error: "Missing required fields: user not logged in/cookie not detected" },
+        {
+          error:
+            "Missing required fields: user not logged in/cookie not detected",
+        },
         { status: 400 }
       );
     }
-    const userData = JSON.parse(userCookieValue);
     const user_id = userData.username;
 
     // 1. Handle session creation/retrieval
@@ -512,34 +522,42 @@ export async function POST(req: NextRequest) {
           const sendChunk = (index: number) => {
             if (index >= words.length) {
               // Send final metadata and close stream
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-                type: 'metadata',
-                ...responseData
-              })}\n\n`));
-              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              controller.enqueue(
+                encoder.encode(
+                  `data: ${JSON.stringify({
+                    type: "metadata",
+                    ...responseData,
+                  })}\n\n`
+                )
+              );
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
               controller.close();
               return;
             }
-            
-            currentText += (index > 0 ? ' ' : '') + words[index];
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-              type: 'content',
-              content: currentText
-            })}\n\n`));
-            
+
+            currentText += (index > 0 ? " " : "") + words[index];
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({
+                  type: "content",
+                  content: currentText,
+                })}\n\n`
+              )
+            );
+
             // Continue with next word after a small delay
             setTimeout(() => sendChunk(index + 1), 50);
           };
-          
+
           sendChunk(0);
-        }
+        },
       });
 
       return new Response(readableStream, {
         headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
         },
       });
     } else {

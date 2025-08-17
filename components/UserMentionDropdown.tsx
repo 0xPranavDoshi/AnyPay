@@ -110,9 +110,9 @@ export default function UserMentionDropdown({
         {loading ? (
           <div className="px-4 py-6 text-center">
             <div className="flex items-center justify-center gap-2 mb-2">
-              <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-bounce delay-100"></div>
-              <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-bounce delay-200"></div>
+              <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse"></div>
+              <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse delay-150"></div>
+              <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse delay-300"></div>
             </div>
             <p className="text-sm text-[var(--color-text-muted)]">
               Loading users...
@@ -132,8 +132,10 @@ export default function UserMentionDropdown({
             {filteredUsers.map((user, index) => (
               <button
                 key={user.walletAddress}
-                onClick={() => onSelectUser(user)}
-                className="w-full px-4 py-3 text-left hover:bg-[var(--color-primary)]/10 transition-colors duration-150 flex items-center gap-3 group"
+                onClick={() => {
+                  onSelectUser(user);
+                }}
+                className="w-full px-4 py-3 cursor-pointer text-left hover:bg-[var(--color-primary)]/10 transition-colors duration-150 flex items-center gap-3 group"
               >
                 {/* User Avatar */}
                 <div className="w-10 h-10 bg-gradient-to-br from-[var(--color-primary)]/20 to-[var(--color-primary)]/10 rounded-full flex items-center justify-center text-lg font-semibold text-[var(--color-primary)] group-hover:scale-110 transition-transform duration-150">

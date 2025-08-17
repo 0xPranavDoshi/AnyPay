@@ -1,18 +1,21 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Image from "next/image";
 import { getCookie, removeCookie } from "@/utils/cookie";
 import { CrossChainPayment, PaymentStatus, TokenType } from "@/lib/interface";
 import PaymentModal from "@/components/PaymentModal";
 import TransactionModal from "@/components/TransactionModal";
-import UserMentionDropdown from "@/components/UserMentionDropdown";
-import SelectedUsers from "@/components/SelectedUsers";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { CdpClient } from "@coinbase/cdp-sdk";
+import SelectedUsers from "@/components/SelectedUsers";
+import UserMentionDropdown from "@/components/UserMentionDropdown";
+import { ethers } from "ethers";
 import { privateKeyToAccount, toAccount } from "viem/accounts";
-import { wrapFetchWithPayment, decodeXPaymentResponse } from "x402-fetch";
-  
+import { CdpClient } from "@coinbase/cdp-sdk";
+import { withPaymentInterceptor, decodeXPaymentResponse } from "x402-axios";
+import axios from "axios";
+
 interface User {
   username: string;
   walletAddress: string;
@@ -33,13 +36,20 @@ interface ChatMessage {
   image?: string;
 }
 
+// Declare ethereum for TypeScript
+declare global {
+  interface Window {
+    ethereum?: any;
+  }
+}
+
 export default function Dashboard() {
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [image, setImage] = useState<string | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
-  const [activeTab, setActiveTab] = useState<"owe" | "owed">("owe");
+  const [activeTab, setActiveTab] = useState<"owe" | "owed" | "paid">("owe");
   const [user, setUser] = useState<User | null>(null);
   const [crossChainPayments, setCrossChainPayments] = useState<
     CrossChainPayment[]
@@ -49,6 +59,7 @@ export default function Dashboard() {
     isOpen: boolean;
     recipientUser?: { username: string; walletAddress: string };
     amount?: number;
+    paymentId?: string;
   }>({ isOpen: false });
   const [transactionState, setTransactionState] = useState<{
     isProcessing: boolean;
@@ -58,19 +69,20 @@ export default function Dashboard() {
     totalSteps: number;
   }>({ isProcessing: false, status: "", step: 0, totalSteps: 4 });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [usersSelected, setUsersSelected] = useState<User[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Payment data state
+  const [youOwe, setYouOwe] = useState<any[]>([]);
+  const [owedToYou, setOwedToYou] = useState<any[]>([]);
+  const [paidPayments, setPaidPayments] = useState<any[]>([]);
 
   // Mention system state
+  const [usersSelected, setUsersSelected] = useState<User[]>([]);
   const [mentionDropdown, setMentionDropdown] = useState<{
     isOpen: boolean;
     searchTerm: string;
     position: { x: number; y: number };
-  }>({
-    isOpen: false,
-    searchTerm: "",
-    position: { x: 0, y: 0 },
-  });
-  const inputRef = useRef<HTMLInputElement>(null);
+  }>({ isOpen: false, searchTerm: "", position: { x: 0, y: 0 } });
 
   // Get user from cookies and fetch payments on component mount
   useEffect(() => {
@@ -95,14 +107,17 @@ export default function Dashboard() {
     getUserData();
   }, []);
 
-  // Fetch cross-chain payments for user
+  // Fetch real payments for user from database
   const fetchUserPayments = async (userAddress: string) => {
     try {
       setPaymentsLoading(true);
-      const response = await fetch(`/api/pay?userAddress=${userAddress}`);
+      const response = await fetch(`/api/payments?userAddress=${userAddress}`);
       if (response.ok) {
         const data = await response.json();
-        setCrossChainPayments(data.payments || []);
+        setYouOwe(data.youOwe || []);
+        setOwedToYou(data.owedToYou || []);
+        setPaidPayments(data.paidPayments || []);
+        setCrossChainPayments(data.crossChainPayments || []);
       }
     } catch (error) {
       console.error("Error fetching payments:", error);
@@ -119,25 +134,48 @@ export default function Dashboard() {
     // Clear user state
     setUser(null);
     setCrossChainPayments([]);
+    setYouOwe([]);
+    setOwedToYou([]);
+    setPaidPayments([]);
+    setUsersSelected([]);
 
     // Redirect to home page
     window.location.href = "/";
   };
 
-  // Mock data for now - will be replaced with real payment data
-  const youOwe = [
-    { user: { username: "alice", walletAddress: "0x123..." }, amount: 45.67 },
-    { user: { username: "bob", walletAddress: "0x456..." }, amount: 23.5 },
-    { user: { username: "charlie", walletAddress: "0x789..." }, amount: 89.99 },
-  ];
+  // Chain configurations (matching deployed contracts from testing/.env)
+  const CHAINS = {
+    "11155111": {
+      name: "Ethereum Sepolia",
+      tokens: [TokenType.USDC, TokenType.CCIP_BNM, TokenType.CCIP_LNM],
+      explorerUrl: "https://sepolia.etherscan.io/tx/",
+      routerAddress: "0xD0daae2231E9CB96b94C8512223533293C3693Bf", // Fixed router address
+    },
+    "421614": {
+      name: "Arbitrum Sepolia",
+      tokens: [TokenType.USDC, TokenType.CCIP_BNM, TokenType.CCIP_LNM],
+      explorerUrl: "https://sepolia.arbiscan.io/tx/",
+      routerAddress: "0x2a9C5afB0d0e4BAb2BCdaE109EC4b0c4Be15a165",
+    },
+    "84532": {
+      name: "Base Sepolia",
+      tokens: [TokenType.USDC, TokenType.CCIP_BNM, TokenType.CCIP_LNM],
+      explorerUrl: "https://sepolia.basescan.org/tx/",
+      routerAddress: "0xD3b06cEbF099CE7DA4AcCf578aaebFDBd6e88a93",
+    },
+  };
 
-  const owedToYou = [
-    { user: { username: "david", walletAddress: "0xabc..." }, amount: 12.75 },
-    { user: { username: "eve", walletAddress: "0xdef..." }, amount: 34.2 },
-    { user: { username: "frank", walletAddress: "0xghi..." }, amount: 67.8 },
-  ];
+  const TOKEN_NAMES = {
+    [TokenType.USDC]: "USDC",
+    [TokenType.CCIP_BNM]: "CCIP-BnM",
+    [TokenType.CCIP_LNM]: "CCIP-LnM",
+  };
 
-  const handlePayUser = (targetUser: User, amount: number) => {
+  const handlePayUser = (
+    targetUser: User,
+    amount: number,
+    paymentId: string
+  ) => {
     setPaymentModal({
       isOpen: true,
       recipientUser: targetUser,
@@ -150,37 +188,35 @@ export default function Dashboard() {
     destinationChain: string;
     tokenType: TokenType;
   }) => {
-    if (!paymentModal.recipientUser || !paymentModal.amount) return;
+    if (!paymentModal.recipientUser || !paymentModal.amount || !user) return;
 
     try {
       // Start transaction process
       setTransactionState({
         isProcessing: true,
-        status: "Connecting to wallet...",
+        status: "🔄 Connecting to MetaMask...",
         step: 1,
         totalSteps: 4,
       });
 
-      // Step 1: Connect wallet & switch chain (simulated)
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Connect to MetaMask
+      if (!window.ethereum) {
+        throw new Error("MetaMask not installed");
+      }
+
+      await window.ethereum.request({ method: "eth_requestAccounts" });
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const signer = provider.getSigner();
+      const userAddress = await signer.getAddress();
+
+      // Step 1: Get transaction parameters from API
       setTransactionState((prev) => ({
         ...prev,
-        status: "Requesting token approval...",
+        status: "📋 Preparing transaction...",
         step: 2,
       }));
 
-      // Step 2: Token approval (simulated)
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      setTransactionState((prev) => ({
-        ...prev,
-        status: "Confirming cross-chain transaction...",
-        step: 3,
-      }));
-
-      // Step 3: Transaction signing and submission
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      const response = await fetch("/api/pay", {
+      const payResponse = await fetch("/api/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -189,41 +225,142 @@ export default function Dashboard() {
           sourceChain: paymentData.sourceChain,
           destinationChain: paymentData.destinationChain,
           tokenType: paymentData.tokenType,
-          signedTxData: "0x...", // Would contain actual signed transaction
+          userAddress: userAddress,
         }),
       });
 
-      const result = await response.json();
+      const payResult = await payResponse.json();
+      if (!payResult.success) {
+        throw new Error(payResult.error || "Failed to prepare transaction");
+      }
 
-      if (result.success) {
-        setTransactionState((prev) => ({
-          ...prev,
-          status: "Transaction confirmed!",
-          step: 4,
-          txHash: result.txHash,
-        }));
+      const { transactionParams, paymentId } = payResult;
 
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+      // Step 2: Check/Approve token if needed
+      setTransactionState((prev) => ({
+        ...prev,
+        status: "✅ Checking token approval...",
+        step: 3,
+      }));
 
-        setPaymentModal({ isOpen: false });
+      const tokenContract = new ethers.Contract(
+        transactionParams.tokenAddress,
+        [
+          "function allowance(address,address) view returns (uint256)",
+          "function approve(address,uint256) returns (bool)",
+        ],
+        signer
+      );
+
+      const allowance = await tokenContract.allowance(
+        userAddress,
+        transactionParams.contractAddress
+      );
+      const amountWei = ethers.BigNumber.from(transactionParams.amountWei);
+
+      if (allowance.lt(amountWei)) {
+        const approveTx = await tokenContract.approve(
+          transactionParams.contractAddress,
+          amountWei
+        );
+        await approveTx.wait();
+      }
+
+      // Step 3: Execute cross-chain payment
+      setTransactionState((prev) => ({
+        ...prev,
+        status: "🚀 Executing cross-chain payment...",
+        step: 4,
+      }));
+
+      const paymentContract = new ethers.Contract(
+        transactionParams.contractAddress,
+        [
+          "function payRecipient(address,uint64,address,uint256,uint8,string) payable returns (bytes32)",
+        ],
+        signer
+      );
+
+      // Calculate CCIP fees
+      let ccipFees;
+      try {
+        ccipFees = await paymentContract.callStatic.payRecipient(
+          transactionParams.recipientAddress,
+          transactionParams.destinationChainSelector,
+          transactionParams.tokenAddress,
+          transactionParams.amountWei,
+          transactionParams.tokenType,
+          paymentId
+        );
+      } catch (error) {
+        console.log("Fee estimation failed, using fallback:", error);
+        ccipFees = ethers.utils.parseEther("0.003"); // Much lower fallback fee for testing
+      }
+
+      const tx = await paymentContract.payRecipient(
+        transactionParams.recipientAddress,
+        transactionParams.destinationChainSelector,
+        transactionParams.tokenAddress,
+        transactionParams.amountWei,
+        transactionParams.tokenType,
+        paymentId,
+        {
+          gasLimit: 500000, // Reduced gas limit
+          value: ccipFees.add(ethers.utils.parseEther("0.001")), // Much smaller buffer - total ~0.004 ETH
+        }
+      );
+
+      console.log("Transaction sent:", tx.hash);
+
+      // Submit transaction hash for tracking
+      const submitResult = await fetch("/api/submit-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentId,
+          txHash: tx.hash,
+          sourceChain: paymentData.sourceChain,
+          destinationChain: paymentData.destinationChain,
+          tokenType: paymentData.tokenType,
+        }),
+      });
+
+      const submitData = await submitResult.json();
+      if (submitResult.ok && submitData.success) {
         setTransactionState({
           isProcessing: false,
-          status: "",
-          step: 0,
+          status: "✅ Payment completed successfully!",
+          step: 4,
           totalSteps: 4,
+          txHash: tx.hash,
         });
 
+        setTimeout(() => {
+          setPaymentModal({ isOpen: false });
+          setTransactionState({
+            isProcessing: false,
+            status: "",
+            step: 0,
+            totalSteps: 4,
+          });
+        }, 3000);
+
+        // Refresh payments
         if (user) {
           fetchUserPayments(user.walletAddress);
         }
       } else {
-        throw new Error(result.error);
+        throw new Error(
+          submitData.error || submitData.details || "Failed to submit payment"
+        );
       }
     } catch (error) {
       console.error("Payment error:", error);
       setTransactionState({
         isProcessing: false,
-        status: "Transaction failed",
+        status: `❌ Error: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
         step: 0,
         totalSteps: 4,
       });
@@ -234,7 +371,7 @@ export default function Dashboard() {
           step: 0,
           totalSteps: 4,
         });
-      }, 3000);
+      }, 5000);
     }
   };
 
@@ -272,30 +409,74 @@ export default function Dashboard() {
   // Mention system functions
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
+    const previousInput = input;
     setInput(value);
 
     // Check for @ symbol to open mention dropdown
     const atIndex = value.lastIndexOf("@");
     if (atIndex !== -1) {
       const searchTerm = value.slice(atIndex + 1);
-      const inputRect = inputRef.current?.getBoundingClientRect();
 
-      if (inputRect) {
-        setMentionDropdown({
-          isOpen: true,
-          searchTerm,
-          position: {
-            x: 0, // Relative to the input container
-            y: 0, // Will be positioned above the input
-          },
-        });
+      // Check if the search term contains a space (user finished typing username)
+      if (searchTerm.includes(" ")) {
+        setMentionDropdown((prev) => ({ ...prev, isOpen: false }));
+        return;
       }
+
+      // Open dropdown immediately when @ is typed
+      setMentionDropdown({
+        isOpen: true,
+        searchTerm,
+        position: {
+          x: 0, // Relative to the input container
+          y: 0, // Will be positioned above the input
+        },
+      });
     } else {
       setMentionDropdown((prev) => ({ ...prev, isOpen: false }));
     }
+
+    // Check if any mentioned users were removed from the input
+    checkForRemovedMentions(previousInput, value);
+  };
+
+  // Function to check if mentioned users were removed from input
+  const checkForRemovedMentions = (
+    previousInput: string,
+    currentInput: string
+  ) => {
+    // Extract all @username patterns from previous and current input
+    // Using a more robust regex that captures @username followed by space or end of string
+    const previousMentions = (previousInput.match(/@(\w+)(?=\s|$)/g) ||
+      []) as string[];
+    const currentMentions = (currentInput.match(/@(\w+)(?=\s|$)/g) ||
+      []) as string[];
+
+    // Find mentions that were removed
+    const removedMentions = previousMentions.filter(
+      (mention) => !currentMentions.includes(mention)
+    );
+
+    // Remove users from usersSelected if their mention was deleted
+    removedMentions.forEach((removedMention) => {
+      const username = removedMention.substring(1); // Remove @ symbol
+      const userToRemove = usersSelected.find(
+        (user) => user.username === username
+      );
+
+      if (userToRemove) {
+        console.log(
+          `Removing ${username} from selected users as mention was deleted`
+        );
+        setUsersSelected((prev) =>
+          prev.filter((user) => user.username !== username)
+        );
+      }
+    });
   };
 
   const handleSelectUser = (selectedUser: User) => {
+    console.log("selectedUser is", selectedUser);
     // Check if user is already selected
     if (
       !usersSelected.find(
@@ -305,14 +486,19 @@ export default function Dashboard() {
       setUsersSelected((prev) => [...prev, selectedUser]);
     }
 
-    // Replace @username with @username in input
+    // Replace @searchTerm with @username in input
     const atIndex = input.lastIndexOf("@");
     if (atIndex !== -1) {
       const beforeAt = input.slice(0, atIndex);
-      const afterUsername = input.slice(
+      const afterSearchTerm = input.slice(
         atIndex + mentionDropdown.searchTerm.length + 1
       );
-      setInput(beforeAt + "@" + selectedUser.username + " " + afterUsername);
+      // Add the username with a space after it
+      console.log(
+        "new input is",
+        beforeAt + "@" + selectedUser.username + " " + afterSearchTerm
+      );
+      setInput(beforeAt + "@" + selectedUser.username + " " + afterSearchTerm);
     }
 
     // Close dropdown
@@ -327,6 +513,13 @@ export default function Dashboard() {
 
   const closeMentionDropdown = () => {
     setMentionDropdown((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  // Handle keydown events for better UX
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      closeMentionDropdown();
+    }
   };
 
   const handleSendMessage = async () => {
@@ -352,11 +545,13 @@ export default function Dashboard() {
     try {
       // Send message to agent API with streaming
       console.log("Metioned users are", usersSelected);
+      console.log("user is", user);
       const payload: any = {
         prompt: messageContent,
         image: messageImage,
         stream: true,
         users: usersSelected,
+        userData: user,
       };
       // Refresh session on page load (first message after refresh)
       if (isFirstClientMessage) {
@@ -366,51 +561,23 @@ export default function Dashboard() {
         if (sessionId) payload.sessionID = sessionId;
       }
 
-      const account = privateKeyToAccount(
-        process.env.NEXT_PUBLIC_WALLET_PRIV_KEY as `0x${string}`
-      );
-      console.log("account", account);
-
-      const fetchWithPayment = wrapFetchWithPayment(fetch, account);
-
-      const response = await fetchWithPayment("/api/agent", {
+      // Get CDP account from server-side API to avoid browser compatibility issues
+      const cdpResponse: any = await fetch("/api/cdp-account", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ name: "AnyPayServerWallet", payload }),
       });
 
-      console.log("response:", response);
-
-      // const body = await response.json();
-      // console.log("body", body);
-
-      const paymentResponse = decodeXPaymentResponse(
-        response.headers.get("x-payment-response")!
-      );
-      console.log("paymentResponse", paymentResponse);
-
-      if (!paymentResponse.success) {
-        console.log("paymentResponse failed", paymentResponse);
-        alert("X402 Payment failed, please try again");
+      if (cdpResponse.status === 500) {
+        alert(cdpResponse.error || "Failed to process request. Try again.");
         return;
       }
-
-      // const response = await fetch("/api/agent", {
-      //   method: "POST",
-      //   headers: {
-      //     "Content-Type": "application/json",
-      //   },
-      //   body: JSON.stringify(payload),
-      // });
-
-      // if (!response.ok) {
-      //   throw new Error("Failed to send message");
-      // }
+      console.log("response:", cdpResponse.body);
 
       // Handle streaming response
-      const reader = response.body?.getReader();
+      const reader = cdpResponse.body?.getReader();
       const decoder = new TextDecoder();
       let streamingContent = "";
 
@@ -483,20 +650,92 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]">
-      {/* Floating Background Elements */}
+      {/* Enhanced Dynamic Background Elements */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-20 left-10 w-32 h-32 bg-gradient-to-br from-[var(--color-primary)]/5 to-transparent rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute top-40 right-20 w-24 h-24 bg-gradient-to-br from-[var(--color-primary)]/8 to-transparent rounded-full blur-3xl animate-pulse delay-1000"></div>
-        <div className="absolute bottom-32 left-1/3 w-28 h-28 bg-gradient-to-br from-[var(--color-primary)]/6 to-transparent rounded-full blur-3xl animate-pulse delay-2000"></div>
-        <div className="absolute top-1/2 right-1/4 w-20 h-20 bg-gradient-to-br from-[var(--color-primary)]/4 to-transparent rounded-full blur-3xl animate-pulse delay-1500"></div>
+        {/* Primary floating orbs */}
+        <div className="absolute top-20 left-10 w-32 h-32 bg-gradient-to-br from-[var(--color-primary)]/8 to-transparent rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute top-40 right-20 w-24 h-24 bg-gradient-to-br from-[var(--color-primary)]/6 to-transparent rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute bottom-32 left-1/3 w-28 h-28 bg-gradient-to-br from-[var(--color-primary)]/7 to-transparent rounded-full blur-3xl animate-pulse delay-2000"></div>
+        <div className="absolute top-1/2 right-1/4 w-20 h-20 bg-gradient-to-br from-[var(--color-primary)]/5 to-transparent rounded-full blur-3xl animate-pulse delay-1500"></div>
+
+        {/* Secondary accent orbs */}
+        <div className="absolute top-16 left-1/4 w-16 h-16 bg-gradient-to-br from-[#0ea5e9]/6 to-transparent rounded-full blur-2xl animate-pulse delay-500"></div>
+        <div className="absolute top-2/3 right-1/3 w-12 h-12 bg-gradient-to-br from-[#0891b2]/5 to-transparent rounded-full blur-2xl animate-pulse delay-3000"></div>
+        <div className="absolute bottom-20 left-1/2 w-18 h-18 bg-gradient-to-br from-[#0ea5e9]/7 to-transparent rounded-full blur-3xl animate-pulse delay-2500"></div>
+
+        {/* Floating geometric shapes */}
+        <div className="absolute top-24 left-1/2 w-8 h-8 border border-[var(--color-primary)]/20 rounded-lg rotate-45 animate-pulse delay-750"></div>
+        <div className="absolute top-36 right-16 w-6 h-6 bg-[var(--color-primary)]/15 rounded-full animate-pulse delay-1750"></div>
+        <div className="absolute top-48 left-16 w-4 h-4 border border-[var(--color-primary)]/25 rounded-lg rotate-12 animate-pulse delay-2250"></div>
+        <div className="absolute top-52 right-1/2 w-10 h-10 border border-[var(--color-primary)]/15 rounded-full animate-pulse delay-1250"></div>
+
+        {/* Network connection lines */}
+        <div className="absolute top-1/4 left-1/2 w-px h-32 bg-gradient-to-b from-transparent via-[var(--color-primary)]/15 to-transparent"></div>
+        <div className="absolute top-1/3 right-1/3 w-24 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/15 to-transparent"></div>
+        <div className="absolute top-1/2 left-1/4 w-16 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/10 to-transparent"></div>
+        <div className="absolute top-2/3 right-1/4 w-px h-20 bg-gradient-to-b from-transparent via-[var(--color-primary)]/12 to-transparent"></div>
+
+        {/* Floating dots with different sizes */}
+        <div className="absolute top-16 left-1/2 w-2 h-2 bg-[var(--color-primary)]/25 rounded-full animate-pulse delay-500"></div>
+        <div className="absolute top-28 right-16 w-1.5 h-1.5 bg-[var(--color-primary)]/20 rounded-full animate-pulse delay-2000"></div>
+        <div className="absolute top-36 left-16 w-1 h-1 bg-[var(--color-primary)]/15 rounded-full animate-pulse delay-3500"></div>
+        <div className="absolute top-52 right-1/2 w-2.5 h-2.5 bg-[var(--color-primary)]/30 rounded-full animate-pulse delay-1000"></div>
+
+        {/* Diagonal lines */}
+        <div className="absolute top-20 left-1/3 w-20 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/12 to-transparent transform rotate-45 origin-left"></div>
+        <div className="absolute top-32 right-1/4 w-16 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/10 to-transparent transform -rotate-45 origin-right"></div>
+
+        {/* Moving particles */}
+        <div className="absolute top-20 left-20 w-1 h-1 bg-[var(--color-primary)]/40 rounded-full animate-bounce"></div>
+        <div className="absolute top-40 right-40 w-0.5 h-0.5 bg-[#0ea5e9]/35 rounded-full animate-bounce delay-1000"></div>
+        <div className="absolute bottom-40 left-40 w-1.5 h-1.5 bg-[#0891b2]/30 rounded-full animate-bounce delay-2000"></div>
+
+        {/* Subtle grid pattern */}
+        <div className="absolute inset-0 opacity-[0.02]">
+          <div
+            className="absolute top-0 left-0 w-full h-full"
+            style={{
+              backgroundImage: `radial-gradient(circle at 1px 1px, var(--color-primary) 1px, transparent 0)`,
+              backgroundSize: "20px 20px",
+            }}
+          ></div>
+        </div>
+
+        {/* Ambient glow */}
+        <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[var(--color-primary)]/2 via-transparent to-[#0ea5e9]/1"></div>
+
+        {/* Additional dynamic elements */}
+        {/* Floating data streams */}
+        <div className="absolute top-1/4 left-1/6 w-16 h-px bg-gradient-to-r from-transparent via-[var(--color-primary)]/20 to-transparent animate-pulse delay-4000"></div>
+        <div className="absolute top-3/4 right-1/6 w-20 h-px bg-gradient-to-r from-transparent via-[#0ea5e9]/15 to-transparent animate-pulse delay-5000"></div>
+
+        {/* Pulsing connection nodes */}
+        <div className="absolute top-1/3 left-1/3 w-3 h-3 bg-[var(--color-primary)]/30 rounded-full animate-pulse delay-1000"></div>
+        <div className="absolute top-2/3 right-1/3 w-2 h-2 bg-[#0891b2]/25 rounded-full animate-pulse delay-3000"></div>
+        <div className="absolute bottom-1/3 left-1/2 w-2.5 h-2.5 bg-[#0ea5e9]/20 rounded-full animate-pulse delay-2000"></div>
+
+        {/* Subtle corner accents */}
+        <div className="absolute top-8 left-8 w-6 h-6 border-l-2 border-t-2 border-[var(--color-primary)]/15 rounded-tl-lg"></div>
+        <div className="absolute top-8 right-8 w-6 h-6 border-r-2 border-t-2 border-[var(--color-primary)]/15 rounded-tr-lg"></div>
+        <div className="absolute bottom-8 left-8 w-6 h-6 border-l-2 border-b-2 border-[var(--color-primary)]/15 rounded-bl-lg"></div>
+        <div className="absolute bottom-8 right-8 w-6 h-6 border-r-2 border-b-2 border-[var(--color-primary)]/15 rounded-br-lg"></div>
       </div>
 
       {/* Header */}
       <header className="relative z-10 bg-gradient-to-r from-[rgba(15,15,35,0.95)] to-[rgba(15,15,35,0.85)] backdrop-blur-[20px] border-b border-[var(--color-border)] px-8 py-6">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <div className="animate-bounce-in text-3xl font-bold text-[var(--color-primary)] tracking-tight">
-              AnyPay
+            <div className="animate-bounce-in flex items-center gap-3">
+              <Image
+                src="/anypay-logo.svg"
+                alt="AnyPay Logo"
+                width={60}
+                height={60}
+                className="h-12 w-12 hover:scale-105 transition-transform duration-300"
+              />
+              <span className="text-3xl font-bold text-[var(--color-primary)] tracking-tight">
+                AnyPay
+              </span>
             </div>
             <div className="h-8 w-px bg-[var(--color-border)]"></div>
             <div className="text-[var(--color-text-secondary)]">
@@ -521,7 +760,7 @@ export default function Dashboard() {
             )}
             <button
               onClick={handleLogout}
-              className="bg-[var(--color-primary)] text-white px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200"
+              className="bg-gradient-to-r from-blue-600 to-slate-600 text-white px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200 hover:shadow-lg hover:shadow-blue-600/30 border-0 cursor-pointer"
             >
               Disconnect
             </button>
@@ -538,56 +777,274 @@ export default function Dashboard() {
             <div className="flex gap-2 mb-6">
               <button
                 onClick={() => setActiveTab("owe")}
-                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
+                className={`min-w-[120px] px-6 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
                   activeTab === "owe"
-                    ? "bg-[var(--color-primary)] text-white shadow-lg shadow-[var(--color-primary)]/30"
-                    : "bg-[var(--color-bg-card)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/30"
+                    ? "bg-gradient-to-r from-red-100 to-red-200 text-red-700 shadow-sm shadow-red-100/20 border-0"
+                    : "bg-gradient-to-r from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-gradient-to-r hover:from-red-50/20 hover:to-red-100/20 hover:border-red-100/40 hover:text-red-600"
                 }`}
               >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                  />
+                </svg>
                 You Owe
               </button>
               <button
                 onClick={() => setActiveTab("owed")}
-                className={`px-6 py-3 rounded-xl font-semibold transition-all duration-200 ${
+                className={`min-w-[120px] px-6 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
                   activeTab === "owed"
-                    ? "bg-[var(--color-primary)] text-white shadow-lg shadow-[var(--color-primary)]/30"
-                    : "bg-[var(--color-bg-card)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:border-[var(--color-primary)]/30"
+                    ? "bg-gradient-to-r from-green-100 to-emerald-200 text-green-700 shadow-sm shadow-green-100/20 border-0"
+                    : "bg-gradient-to-r from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-gradient-to-r hover:from-green-50/20 hover:to-green-100/20 hover:border-green-100/40 hover:text-green-600"
                 }`}
               >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
                 Owed To You
+              </button>
+              <button
+                onClick={() => setActiveTab("paid")}
+                className={`min-w-[120px] px-6 py-3 rounded-xl font-semibold transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer ${
+                  activeTab === "paid"
+                    ? "bg-gradient-to-r from-blue-100 to-cyan-200 text-blue-700 shadow-sm shadow-blue-100/20 border-0"
+                    : "bg-gradient-to-r from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] text-[var(--color-text-secondary)] border border-[var(--color-border)] hover:bg-gradient-to-r hover:from-blue-50/20 hover:to-blue-100/20 hover:border-blue-100/40 hover:text-blue-600"
+                }`}
+              >
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                  />
+                </svg>
+                Paid
               </button>
             </div>
 
             {/* Tab Content */}
-            <div className="h-[520px] bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-4 overflow-y-auto">
-              {activeTab === "owe" ? (
-                // You Owe Section
+            <div className="flex-1 bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-4 overflow-y-auto">
+              {activeTab === "paid" ? (
+                // Paid Payments Section
                 <div>
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="w-12 h-12 bg-gradient-to-br from-red-500/20 to-red-500/10 rounded-xl flex items-center justify-center">
-                      <span className="text-2xl">💸</span>
+                  {paymentsLoading ? (
+                    <div className="text-center py-8 text-[var(--color-text-muted)]">
+                      <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg
+                          className="w-8 h-8 text-blue-500 animate-spin"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                          />
+                        </svg>
+                      </div>
+                      <p>Loading your payments...</p>
                     </div>
-                    <div>
-                      <h2 className="text-2xl font-bold text-[var(--color-text-primary)]">
-                        You Owe
-                      </h2>
+                  ) : paidPayments.length === 0 ? (
+                    <div className="text-center py-12 text-[var(--color-text-muted)]">
+                      <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg
+                          className="w-10 h-10 text-blue-500"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                          />
+                        </svg>
+                      </div>
+                      <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
+                        No Payment History
+                      </h3>
                       <p className="text-[var(--color-text-muted)]">
-                        People you need to pay back
+                        Your completed transactions will appear here
                       </p>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {paidPayments.map((item, index) => (
+                        <div
+                          key={index}
+                          className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 hover:border-blue-100/50 transition-all duration-200"
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div>
+                              <p className="font-semibold text-[var(--color-text-primary)]">
+                                Paid to{" "}
+                                {item.recipientUser?.username || "Unknown"}
+                              </p>
+                              <p className="text-sm text-[var(--color-text-muted)] font-mono">
+                                {item.recipientUser?.walletAddress ||
+                                  item.recipient}
+                              </p>
+                              {item.description && (
+                                <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                                  {item.description}
+                                </p>
+                              )}
+                              <p className="text-xs text-blue-500 mt-1">
+                                ✅ Completed on{" "}
+                                {new Date(item.paidAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-xl font-bold text-blue-500">
+                                ${item.amount.toFixed(2)}
+                              </p>
+                              <p className="text-xs text-[var(--color-text-muted)]">
+                                via{" "}
+                                {item.tokenType === 0
+                                  ? "USDC"
+                                  : item.tokenType === 1
+                                  ? "CCIP-BnM"
+                                  : "CCIP-LnM"}
+                              </p>
+                            </div>
+                          </div>
 
-                  {youOwe.length === 0 ? (
+                          {/* Transaction Details */}
+                          <div className="p-3 bg-blue-900/10 rounded-lg border border-blue-500/20">
+                            <div className="flex justify-between items-center mb-2">
+                              <span className="text-sm text-blue-600 font-medium">
+                                Transaction Hash:
+                              </span>
+                              {item.txHash && (
+                                <a
+                                  href={`${
+                                    CHAINS[
+                                      item.sourceChain as keyof typeof CHAINS
+                                    ]?.explorerUrl || "#"
+                                  }${item.txHash}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-500 hover:text-blue-300 text-sm underline"
+                                >
+                                  View Transaction →
+                                </a>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 text-xs text-[var(--color-text-muted)]">
+                              <div>
+                                <span className="font-medium">From:</span>{" "}
+                                {CHAINS[item.sourceChain as keyof typeof CHAINS]
+                                  ?.name || item.sourceChain}
+                              </div>
+                              <div>
+                                <span className="font-medium">To:</span>{" "}
+                                {CHAINS[
+                                  item.destinationChain as keyof typeof CHAINS
+                                ]?.name || item.destinationChain}
+                              </div>
+                            </div>
+
+                            {/* CCIP Tracking */}
+                            {item.messageId &&
+                              item.messageId !== "pending" &&
+                              item.messageId !== "direct-transfer" && (
+                                <div className="mt-2">
+                                  <a
+                                    href={`https://ccip.chain.link/msg/${item.messageId}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-500 hover:text-blue-300 text-sm underline"
+                                  >
+                                    🔗 Track CCIP Message →
+                                  </a>
+                                </div>
+                              )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : activeTab === "owe" ? (
+                // You Owe Section
+                <div>
+                  {paymentsLoading ? (
                     <div className="text-center py-8 text-[var(--color-text-muted)]">
-                      <div className="text-4xl mb-2">🎉</div>
-                      <p>You&apos;re all caught up! No outstanding debts.</p>
+                      <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg
+                          className="w-8 h-8 text-blue-500 animate-spin"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                          />
+                        </svg>
+                      </div>
+                      <p>Loading your payments...</p>
+                    </div>
+                  ) : youOwe.length === 0 ? (
+                    <div className="text-center py-12 text-[var(--color-text-muted)]">
+                      <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg
+                          className="w-10 h-10 text-blue-500"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                      </div>
+                      <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
+                        All Caught Up!
+                      </h3>
+                      <p className="text-[var(--color-text-muted)]">
+                        No outstanding debts to worry about
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-4">
                       {youOwe.map((item, index) => (
                         <div
                           key={index}
-                          className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 hover:border-[var(--color-primary)]/30 transition-all duration-200"
+                          className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 hover:border-red-100/50 transition-all duration-200"
                         >
                           <div className="flex items-center justify-between mb-3">
                             <div>
@@ -597,56 +1054,157 @@ export default function Dashboard() {
                               <p className="text-sm text-[var(--color-text-muted)] font-mono">
                                 {item.user.walletAddress}
                               </p>
+                              {item.description && (
+                                <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                                  {item.description}
+                                </p>
+                              )}
                             </div>
                             <div className="text-right">
-                              <p className="text-xl font-bold text-red-400">
+                              <p className="text-xl font-bold text-red-500">
                                 ${item.amount.toFixed(2)}
                               </p>
                             </div>
                           </div>
+
+                          {/* Cross-chain payment tracking */}
+                          {item.crossChainPayments &&
+                            item.crossChainPayments.length > 0 && (
+                              <div className="mb-3 p-2 bg-blue-900/20 rounded-lg border border-blue-500/30">
+                                <p className="text-xs text-blue-300 mb-1">
+                                  🔗 CCIP Transactions:
+                                </p>
+                                {item.crossChainPayments.map(
+                                  (ccipTx: any, ccipIndex: number) => (
+                                    <div
+                                      key={ccipIndex}
+                                      className="text-xs text-blue-200 space-y-1"
+                                    >
+                                      <div className="flex justify-between items-center">
+                                        <span>
+                                          {ccipTx.status || "Processing"}
+                                        </span>
+                                        {ccipTx.txHash && (
+                                          <a
+                                            href={`${
+                                              CHAINS[
+                                                ccipTx.sourceChain as keyof typeof CHAINS
+                                              ]?.explorerUrl || "#"
+                                            }${ccipTx.txHash}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-blue-300 hover:text-blue-100 underline"
+                                          >
+                                            View Tx
+                                          </a>
+                                        )}
+                                      </div>
+                                      {ccipTx.messageId &&
+                                        ccipTx.messageId !== "pending" && (
+                                          <div className="flex justify-between items-center">
+                                            <span>CCIP Message:</span>
+                                            <a
+                                              href={`https://ccip.chain.link/msg/${ccipTx.messageId}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="text-blue-300 hover:text-blue-100 underline"
+                                            >
+                                              Track CCIP
+                                            </a>
+                                          </div>
+                                        )}
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            )}
+
                           <button
                             onClick={() =>
-                              handlePayUser(item.user, item.amount)
+                              handlePayUser(
+                                item.user,
+                                item.amount,
+                                item.paymentId
+                              )
                             }
-                            className="w-full bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/80 text-white py-3 rounded-lg font-semibold hover:scale-105 transition-all duration-200 hover:shadow-lg hover:shadow-[var(--color-primary)]/30"
+                            className="w-full bg-gradient-to-r from-red-100 to-red-200 text-red-700 py-3 rounded-lg font-semibold cursor-pointer transition-all duration-200 hover:shadow-sm hover:shadow-red-100/20"
                           >
-                            Pay ${item.amount.toFixed(2)}
+                            <div className="flex items-center justify-center gap-2">
+                              <svg
+                                className="w-5 h-5"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                                />
+                              </svg>
+                              Pay ${item.amount.toFixed(2)} Cross-Chain
+                            </div>
                           </button>
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
-              ) : (
+              ) : activeTab === "owed" ? (
                 // Owed To You Section
                 <div>
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="w-12 h-12 bg-gradient-to-br from-green-500/20 to-green-500/10 rounded-xl flex items-center justify-center">
-                      <span className="text-2xl">💰</span>
-                    </div>
-                    <div>
-                      <h2 className="text-2xl font-bold text-[var(--color-text-primary)]">
-                        Owed To You
-                      </h2>
-                      <p className="text-[var(--color-text-muted)]">
-                        People who owe you money
-                      </p>
-                    </div>
-                  </div>
-
-                  {owedToYou.length === 0 ? (
+                  {paymentsLoading ? (
                     <div className="text-center py-8 text-[var(--color-text-muted)]">
-                      <div className="text-4xl mb-2">📝</div>
-                      <p>No pending payments owed to you.</p>
+                      <div className="w-16 h-16 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg
+                          className="w-8 h-8 text-blue-500 animate-spin"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                          />
+                        </svg>
+                      </div>
+                      <p>Loading your payments...</p>
+                    </div>
+                  ) : owedToYou.length === 0 ? (
+                    <div className="text-center py-12 text-[var(--color-text-muted)]">
+                      <div className="w-20 h-20 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg
+                          className="w-10 h-10 text-blue-500"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
+                          />
+                        </svg>
+                      </div>
+                      <h3 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">
+                        All Settled Up!
+                      </h3>
+                      <p className="text-[var(--color-text-muted)]">
+                        No pending payments owed to you
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-4">
                       {owedToYou.map((item, index) => (
                         <div
                           key={index}
-                          className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 hover:border-green-500/30 transition-all duration-200"
+                          className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-4 hover:border-green-100/50 transition-all duration-200"
                         >
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between mb-3">
                             <div>
                               <p className="font-semibold text-[var(--color-text-primary)]">
                                 {item.user.username}
@@ -654,6 +1212,11 @@ export default function Dashboard() {
                               <p className="text-sm text-[var(--color-text-muted)] font-mono">
                                 {item.user.walletAddress}
                               </p>
+                              {item.description && (
+                                <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                                  {item.description}
+                                </p>
+                              )}
                             </div>
                             <div className="text-right">
                               <p className="text-xl font-bold text-green-400">
@@ -664,12 +1227,64 @@ export default function Dashboard() {
                               </p>
                             </div>
                           </div>
+
+                          {/* Cross-chain payment tracking */}
+                          {item.crossChainPayments &&
+                            item.crossChainPayments.length > 0 && (
+                              <div className="p-2 bg-green-900/20 rounded-lg border border-green-500/30">
+                                <p className="text-xs text-green-300 mb-1">
+                                  🔗 CCIP Transactions:
+                                </p>
+                                {item.crossChainPayments.map(
+                                  (ccipTx: any, ccipIndex: number) => (
+                                    <div
+                                      key={ccipIndex}
+                                      className="text-xs text-green-200 space-y-1"
+                                    >
+                                      <div className="flex justify-between items-center">
+                                        <span>
+                                          {ccipTx.status || "Processing"}
+                                        </span>
+                                        {ccipTx.txHash && (
+                                          <a
+                                            href={`${
+                                              CHAINS[
+                                                ccipTx.sourceChain as keyof typeof CHAINS
+                                              ]?.explorerUrl || "#"
+                                            }${ccipTx.txHash}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-green-300 hover:text-green-100 underline"
+                                          >
+                                            View Tx
+                                          </a>
+                                        )}
+                                      </div>
+                                      {ccipTx.messageId &&
+                                        ccipTx.messageId !== "pending" && (
+                                          <div className="flex justify-between items-center">
+                                            <span>CCIP Message:</span>
+                                            <a
+                                              href={`https://ccip.chain.link/msg/${ccipTx.messageId}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="text-green-300 hover:text-green-100 underline"
+                                            >
+                                              Track CCIP
+                                            </a>
+                                          </div>
+                                        )}
+                                    </div>
+                                  )
+                                )}
+                              </div>
+                            )}
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -678,7 +1293,20 @@ export default function Dashboard() {
             {/* Chat Header */}
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 bg-gradient-to-br from-[var(--color-primary)]/20 to-[var(--color-primary)]/10 rounded-xl flex items-center justify-center">
-                <span className="text-2xl">🤖</span>
+                <svg
+                  className="w-7 h-7 text-[var(--color-primary)]"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                  />
+                </svg>
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-[var(--color-text-primary)]">
@@ -687,16 +1315,32 @@ export default function Dashboard() {
                 <p className="text-[var(--color-text-muted)]">
                   Upload receipts and chat with your financial AI
                   <br />
-                  <span className="text-xs">Supports markdown formatting</span>
                 </p>
               </div>
             </div>
 
             {/* Chat Messages */}
-            <div className="h-[250px] bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-3 mb-3 overflow-y-auto">
+            <div className="bg-[var(--color-bg-primary)] border border-[var(--color-border)] rounded-xl p-3 mb-6 overflow-y-auto h-80 scrollbar-thin scrollbar-thumb-[var(--color-primary)]/20 scrollbar-track-transparent hover:scrollbar-thumb-[var(--color-primary)]/30">
               {chatHistory.length === 0 ? (
-                <div className="text-center py-16 text-[var(--color-text-muted)]">
-                  <div className="text-6xl mb-4">🤖</div>
+                <div className="text-center py-8 text-[var(--color-text-muted)]">
+                  <div className="mb-4">
+                    <div className="w-16 h-16 bg-gradient-to-br from-[var(--color-primary)]/20 to-[var(--color-primary)]/10 rounded-2xl flex items-center justify-center mx-auto">
+                      <svg
+                        className="w-8 h-8 text-[var(--color-primary)]"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
+                        />
+                      </svg>
+                    </div>
+                  </div>
                   <p className="text-lg mb-2">
                     Welcome to your AI Financial Assistant!
                   </p>
@@ -817,9 +1461,9 @@ export default function Dashboard() {
                     <div className="flex justify-start">
                       <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl p-4">
                         <div className="flex items-center gap-2">
-                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-bounce"></div>
-                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-bounce delay-100"></div>
-                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-bounce delay-200"></div>
+                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse"></div>
+                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse delay-150"></div>
+                          <div className="w-2 h-2 bg-[var(--color-primary)] rounded-full animate-pulse delay-300"></div>
                         </div>
                       </div>
                     </div>
@@ -845,7 +1489,7 @@ export default function Dashboard() {
                   </span>
                   <button
                     onClick={removeImage}
-                    className="text-red-400 hover:text-red-300 text-sm hover:scale-110 transition-transform duration-200"
+                    className="text-red-400 hover:text-red-300 text-sm hover:scale-110 transition-transform duration-200 cursor-pointer"
                   >
                     Remove
                   </button>
@@ -866,6 +1510,7 @@ export default function Dashboard() {
                   type="text"
                   value={input}
                   onChange={handleInputChange}
+                  onKeyDown={handleKeyDown}
                   placeholder="Ask about your expenses or upload a receipt... (Type @ to mention users)"
                   className="w-full bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] rounded-xl px-4 py-3 focus:border-[var(--color-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/20 transition-all duration-200"
                   onKeyPress={(e) => e.key === "Enter" && handleSendMessage()}
@@ -883,23 +1528,77 @@ export default function Dashboard() {
 
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className={`bg-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] px-3 sm:px-4 py-3 rounded-xl hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-all duration-200 hover:scale-105 ${
+                  className={`relative group cursor-pointer overflow-hidden px-4 sm:px-5 py-3 rounded-xl font-medium transition-all duration-300 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 ${
                     image
-                      ? "border-[var(--color-primary)] text-[var(--color-primary)]"
-                      : ""
+                      ? "bg-gradient-to-r from-green-500/20 to-emerald-500/20 border-2 border-green-500/40 text-green-400 shadow-lg shadow-green-500/20"
+                      : "bg-gradient-to-r from-[var(--color-primary)]/10 to-[#0ea5e9]/10 border-2 border-[var(--color-primary)]/30 text-[var(--color-primary)] hover:bg-gradient-to-r hover:from-[var(--color-primary)]/20 hover:to-[#0ea5e9]/20 hover:border-[var(--color-primary)]/50 hover:shadow-lg hover:shadow-[var(--color-primary)]/20"
                   }`}
                   title={
                     image ? "Replace Image (1 max)" : "Upload Image (1 max)"
                   }
                   disabled={isLoading}
                 >
-                  {image ? "🖼️" : "📷"}
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`w-5 h-5 transition-all duration-300 ${
+                        image ? "scale-110" : "group-hover:scale-110"
+                      }`}
+                    >
+                      {image ? (
+                        <svg
+                          className="w-full h-full"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 002 2z"
+                          />
+                        </svg>
+                      ) : (
+                        <svg
+                          className="w-full h-full"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                          />
+                        </svg>
+                      )}
+                    </div>
+                    <span className="text-sm font-medium hidden sm:inline">
+                      {image ? "Replace" : "Upload"}
+                    </span>
+                  </div>
+
+                  {/* Subtle glow effect */}
+                  <div
+                    className={`absolute inset-0 rounded-xl opacity-0 transition-opacity duration-300 ${
+                      image
+                        ? "bg-gradient-to-r from-green-500/10 to-emerald-500/10"
+                        : "bg-gradient-to-r from-[var(--color-primary)]/10 to-[#0ea5e9]/10"
+                    } group-hover:opacity-100`}
+                  ></div>
                 </button>
 
                 <button
                   onClick={handleSendMessage}
                   disabled={(!input.trim() && !image) || isLoading}
-                  className="bg-[var(--color-primary)] text-white px-4 sm:px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200 hover:shadow-lg hover:shadow-[var(--color-primary)]/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 whitespace-nowrap"
+                  className="bg-gradient-to-r from-[var(--color-primary)] to-[#0ea5e9] text-white px-4 sm:px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200 hover:shadow-lg hover:shadow-[var(--color-primary)]/40 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 whitespace-nowrap border-0 cursor-pointer"
                 >
                   {isLoading ? "Sending..." : "Send"}
                 </button>
@@ -937,6 +1636,23 @@ export default function Dashboard() {
         totalSteps={transactionState.totalSteps}
         txHash={transactionState.txHash}
       />
+
+      {/* Transaction Status Outside Modal */}
+      {transactionState.status && !transactionState.isProcessing && (
+        <div className="fixed bottom-4 right-4 z-50 bg-gray-800 border border-gray-600 rounded-lg p-4 max-w-sm">
+          <p className="text-sm text-white">{transactionState.status}</p>
+          {transactionState.txHash && (
+            <a
+              href={`https://ccip.chain.link/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-400 hover:text-blue-300 text-xs underline block mt-1"
+            >
+              🔗 Track CCIP Transaction
+            </a>
+          )}
+        </div>
+      )}
     </div>
   );
 }

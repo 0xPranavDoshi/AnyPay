@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateOnrampUrl } from '@/utils/onramp';
 import { generateJwt } from '@coinbase/cdp-sdk/auth';
 
-// You should store these in your .env file
-const COINBASE_API_KEY = process.env.COINBASE_API_KEY!;
-const COINBASE_API_SECRET = process.env.COINBASE_API_SECRET!;
+// Use CDP API keys from environment
+const COINBASE_API_KEY = process.env.NEXT_PUBLIC_CDP_API_KEY_ID!;
+const COINBASE_API_SECRET = process.env.NEXT_PUBLIC_CDP_API_KEY_SECRET!;
 
 const COINBASE_SESSION_TOKEN_URL = 'https://api.developer.coinbase.com/onramp/v1/token';
 

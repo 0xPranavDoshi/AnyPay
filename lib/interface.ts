@@ -29,13 +29,29 @@ export interface CrossChainPayment {
   status: PaymentStatus;
   messageId?: string;
   txHash?: string;
+  timestamp?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
 
 export interface Payment {
-  recipient: User;
+  _id?: string;
+  payer?: User;
+  owers?: {
+    user: User;
+    amount: number;
+  }[];
+  recipients?: {
+    user: User;
+    amount: number;
+  }[];
   totalAmount: number;
-  sender: User;
+  senders?: {
+    user: User;
+    amount: number;
+  }[];
+  description?: string;
   crossChainPayments?: CrossChainPayment[];
+  createdAt?: Date;
+  updatedAt?: Date;
 }
