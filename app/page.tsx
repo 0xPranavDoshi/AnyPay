@@ -71,7 +71,7 @@ export default function Home() {
               </span>
               <br />
               <span className="gradient-text relative">
-                Any Network.
+                Any Chain.
                 <div className="absolute -bottom-2 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-[var(--color-primary)]/50 to-transparent"></div>
               </span>
               <br />
