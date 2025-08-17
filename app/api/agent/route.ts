@@ -1,5 +1,6 @@
 export const runtime = "nodejs";
 
+import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import {
   getSession,
@@ -319,9 +320,8 @@ export async function POST(req: NextRequest) {
       refresh_session,
       stream = false,
       users,
+      userData,
     } = await req.json();
-
-    const userCookie = getCookie("user");
 
     if (!prompt && !image) {
       return NextResponse.json(
@@ -332,8 +332,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const userCookieValue = await userCookie;
-    if (!userCookieValue) {
+    if (!userData) {
       return NextResponse.json(
         {
           error:
@@ -342,7 +341,6 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
-    const userData = JSON.parse(userCookieValue);
     const user_id = userData.username;
 
     // 1. Handle session creation/retrieval

@@ -11,8 +11,10 @@ import remarkGfm from "remark-gfm";
 import SelectedUsers from "@/components/SelectedUsers";
 import UserMentionDropdown from "@/components/UserMentionDropdown";
 import { ethers } from "ethers";
-import { privateKeyToAccount } from "viem/accounts";
-import { wrapFetchWithPayment, decodeXPaymentResponse } from "x402-fetch";
+import { privateKeyToAccount, toAccount } from "viem/accounts";
+import { CdpClient } from "@coinbase/cdp-sdk";
+import { withPaymentInterceptor, decodeXPaymentResponse } from "x402-axios";
+import axios from "axios";
 
 interface User {
   username: string;
@@ -538,11 +540,13 @@ export default function Dashboard() {
     try {
       // Send message to agent API with streaming
       console.log("Metioned users are", usersSelected);
+      console.log("user is", user);
       const payload: any = {
         prompt: messageContent,
         image: messageImage,
         stream: true,
         users: usersSelected,
+        userData: user,
       };
       // Refresh session on page load (first message after refresh)
       if (isFirstClientMessage) {
@@ -552,39 +556,19 @@ export default function Dashboard() {
         if (sessionId) payload.sessionID = sessionId;
       }
 
-      const account = privateKeyToAccount(
-        process.env.NEXT_PUBLIC_WALLET_PRIV_KEY as `0x${string}`
-      );
-      console.log("account", account);
-
-      const fetchWithPayment = wrapFetchWithPayment(fetch, account);
-
-      const response = await fetchWithPayment("/api/agent", {
+      // Get CDP account from server-side API to avoid browser compatibility issues
+      const cdpResponse = await fetch("/api/cdp-account", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ name: "AnyPayServerWallet", payload }),
       });
 
-      console.log("response:", response);
-
-      // const body = await response.json();
-      // console.log("body", body);
-
-      const paymentResponse = decodeXPaymentResponse(
-        response.headers.get("x-payment-response")!
-      );
-      console.log("paymentResponse", paymentResponse);
-
-      if (!paymentResponse.success) {
-        console.log("paymentResponse failed", paymentResponse);
-        alert("X402 Payment failed, please try again");
-        return;
-      }
+      console.log("response:", cdpResponse.body);
 
       // Handle streaming response
-      const reader = response.body?.getReader();
+      const reader = cdpResponse.body?.getReader();
       const decoder = new TextDecoder();
       let streamingContent = "";
 
