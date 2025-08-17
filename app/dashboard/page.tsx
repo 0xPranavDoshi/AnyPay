@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
-import { getCookie, removeCookie } from "@/utils/cookie";
-import { CrossChainPayment, PaymentStatus, TokenType } from "@/lib/interface";
+import { removeCookie } from "@/utils/cookie";
+import { CrossChainPayment, TokenType } from "@/lib/interface";
 import PaymentModal from "@/components/PaymentModal";
 import TransactionModal from "@/components/TransactionModal";
 import ReactMarkdown from "react-markdown";
@@ -11,10 +11,6 @@ import remarkGfm from "remark-gfm";
 import SelectedUsers from "@/components/SelectedUsers";
 import UserMentionDropdown from "@/components/UserMentionDropdown";
 import { ethers } from "ethers";
-import { privateKeyToAccount, toAccount } from "viem/accounts";
-import { CdpClient } from "@coinbase/cdp-sdk";
-import { withPaymentInterceptor, decodeXPaymentResponse } from "x402-axios";
-import axios from "axios";
 
 interface User {
   username: string;
