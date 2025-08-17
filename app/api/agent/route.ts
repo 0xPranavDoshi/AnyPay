@@ -57,7 +57,7 @@ const AVAILABLE_TOOLS = [
     type: "function", 
     function: {
       name: "save_settlement",
-      description: "Save the settlement payments to the database",
+      description: "Save settlement as 1:1 payment edges (one document per sender→recipient with amount)",
       parameters: {
         type: "object",
         properties: {
@@ -68,20 +68,20 @@ const AVAILABLE_TOOLS = [
               properties: {
                 sender: {
                   type: "string",
-                  description: "Username of the person who owes money"
+                  description: "Username of the person who owes money (ower)"
                 },
                 recipient: {
                   type: "string", 
-                  description: "Username of the person who should receive money"
+                  description: "Username of the person who should receive money (payer)"
                 },
-                totalAmount: {
+                amount: {
                   type: "number",
-                  description: "Amount to be paid"
+                  description: "Amount owed from sender to recipient"
                 }
               },
-              required: ["sender", "recipient", "totalAmount"]
+              required: ["sender", "recipient", "amount"]
             },
-            description: "List of payments to save"
+            description: "List of payment edges to save"
           }
         },
         required: ["payments"]
@@ -108,6 +108,11 @@ function getBillSplittingPrompt(
 
   Before calling the save_settlement() tool call, just confirm the settlement with the user. Once user confirms the plan, call save_settlement({ payments }).
 
+Storage model for settlements (do not reveal to user):
+- AnyPay stores one payment document per sender→recipient edge. Each has: sender (ower), recipient (payer), amount.
+- When saving, call save_settlement({ payments: [{ sender, recipient, amount }, ...] }). Do NOT send totals here.
+- Newly created payments default to status PENDING. Leave other fields blank.
+
 Current status:
 - Total: ${data.totalAmount ? `$${data.totalAmount.toFixed(2)}` : 'Unknown'}
 - ${usersText}
@@ -120,7 +125,7 @@ Tool-use policy (do not reveal to user):
 - If user provides an amount (text or image), call updateBillSplittingData({ totalAmount }).
 - If user names the payer, call updateBillSplittingData({ payer }).
 - If user specifies split method, call updateBillSplittingData({ splitMethod }).
-- If billSplittingData is filled and plan is confirmed, call save_settlement({ payments }).
+- If billSplittingData is filled and plan is confirmed, call save_settlement({ payments: [{ sender, recipient, amount }] }).
 - Users list from UI is authoritative. Once that comes in, the users involved in the status will automatically be updated.
 
 Style:
@@ -216,14 +221,16 @@ async function handleSaveSettlement(
       );
     }
 
-    const amount = Number(paymentData.totalAmount) || 0;
+    const amount = Number(
+      paymentData.amount !== undefined ? paymentData.amount : paymentData.totalAmount
+    ) || 0;
     
     const payment: Payment = {
-      payer: sender, // Person who owes money
-      ower: recipient, // Person who is owed money
+      payer: recipient, // Person who is owed money (recipient)
+      ower: sender, // Person who owes money (sender)
       amount,
       description: billData.splitMethod ? `Split: ${billData.splitMethod}` : "Bill split payment",
-      status: PaymentStatus.UNPAID,
+      status: PaymentStatus.PENDING,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -409,6 +416,7 @@ export async function POST(req: NextRequest) {
           );
           console.log("Payments saved with IDs:", paymentIds);
           updatedBillData.confirmed = true;
+          updatedBillData.settlement = paymentIds;
           messagesLog.push({
             role: 'tool',
             tool_call_id: (toolCall as any).id,
@@ -486,6 +494,7 @@ export async function POST(req: NextRequest) {
                   updatedBillData
                 );
                 updatedBillData.confirmed = true;
+                updatedBillData.settlement = paymentIds;
                 messagesLog.push({
                   role: 'tool',
                   tool_call_id: (toolCall as any).id,
