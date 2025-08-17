@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+
 export default function LogoPreview() {
   const concepts = [
     {
@@ -56,11 +58,11 @@ export default function LogoPreview() {
               </div>
               
               <div className="bg-white rounded-xl p-4 mb-3 flex items-center justify-center min-h-[80px]">
-                <img src={concept.file} alt={concept.name} className="max-w-full h-auto" />
+                <Image src={concept.file} alt={concept.name} width={160} height={80} className="max-w-full h-auto" />
               </div>
               
               <div className="bg-[var(--color-bg-primary)] rounded-xl p-4 flex items-center justify-center min-h-[80px]">
-                <img src={concept.file} alt={`${concept.name} - Dark`} className="max-w-full h-auto" />
+                <Image src={concept.file} alt={`${concept.name} - Dark`} width={160} height={80} className="max-w-full h-auto" />
               </div>
             </div>
           ))}
@@ -71,15 +73,15 @@ export default function LogoPreview() {
           <div className="flex items-center justify-center gap-8">
             <div className="text-center">
               <p className="text-sm text-[var(--color-text-muted)] mb-2">16x16px</p>
-              <img src="/favicon.svg" alt="Favicon" width="16" height="16" className="mx-auto border border-[var(--color-border)]" />
+              <Image src="/favicon.svg" alt="Favicon" width={16} height={16} className="mx-auto border border-[var(--color-border)]" />
             </div>
             <div className="text-center">
               <p className="text-sm text-[var(--color-text-muted)] mb-2">32x32px</p>
-              <img src="/favicon.svg" alt="Favicon" width="32" height="32" className="mx-auto border border-[var(--color-border)]" />
+              <Image src="/favicon.svg" alt="Favicon" width={32} height={32} className="mx-auto border border-[var(--color-border)]" />
             </div>
             <div className="text-center">
               <p className="text-sm text-[var(--color-text-muted)] mb-2">48x48px</p>
-              <img src="/favicon.svg" alt="Favicon" width="48" height="48" className="mx-auto border border-[var(--color-border)]" />
+              <Image src="/favicon.svg" alt="Favicon" width={48} height={48} className="mx-auto border border-[var(--color-border)]" />
             </div>
           </div>
         </div>
@@ -104,14 +106,14 @@ export default function LogoPreview() {
                 <li>• <strong>Connection:</strong> Letters interlock/flow together</li>
                 <li>• <strong>Sophistication:</strong> Professional, tech-forward feel</li>
                 <li>• <strong>Versatility:</strong> Works on light and dark backgrounds</li>
-                <li>• <strong>Brand Consistency:</strong> Matches your site's aesthetic</li>
+                <li>• <strong>Brand Consistency:</strong> Matches your site&apos;s aesthetic</li>
               </ul>
             </div>
           </div>
           
           <div className="mt-6 pt-6 border-t border-[var(--color-border)]">
             <p className="text-[var(--color-text-muted)] text-sm text-center">
-              <strong>Recommended:</strong> "Split Crossbar" or "A with Flow" for the perfect balance of meaning and minimalism
+              <strong>Recommended:</strong> &quot;Split Crossbar&quot; or &quot;A with Flow&quot; for the perfect balance of meaning and minimalism
             </p>
           </div>
         </div>

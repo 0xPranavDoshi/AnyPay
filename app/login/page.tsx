@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { setCookie } from "@/utils/cookie";
 
 export default function Login() {
@@ -80,12 +81,12 @@ export default function Login() {
               AnyPay
             </span>
           </div>
-          <a
+          <Link
             href="/"
             className="bg-[var(--color-primary)] text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition-opacity duration-200 animate-scale-in hover:scale-105 transform"
           >
             Back to Home
-          </a>
+          </Link>
         </div>
       </nav>
 
@@ -201,7 +202,7 @@ export default function Login() {
             <p className="text-[var(--color-text-secondary)] text-base">
               Don{"'"}t have an account?{" "}
               <span className="text-[var(--color-primary)] cursor-pointer hover:underline font-semibold">
-                <a href="/signup">Sign up here</a>
+                <Link href="/signup">Sign up here</Link>
               </span>
             </p>
           </div>

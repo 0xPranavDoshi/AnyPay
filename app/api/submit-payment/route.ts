@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ethers } from "ethers";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import { PaymentStatus } from "@/lib/interface";
 
 // RPC URLs - using reliable public endpoints
@@ -42,15 +42,9 @@ async function updatePaymentWithCrossChain(paymentId: string, crossChainData: an
 
     // Add cross-chain payment data to the payments collection
     // Try both string ID and ObjectId format for MongoDB compatibility
-    let query: any;
-    try {
-      // Try as ObjectId first (for MongoDB _id fields)
-      const { ObjectId } = require('mongodb');
-      query = { _id: new ObjectId(paymentId) };
-    } catch (error) {
-      // If ObjectId fails, try as string
-      query = { _id: paymentId };
-    }
+    const query: any = ObjectId.isValid(paymentId)
+      ? { _id: new ObjectId(paymentId) }
+      : { _id: paymentId };
     
     const result = await collection.updateOne(
       query,
@@ -217,7 +211,7 @@ export async function POST(req: NextRequest) {
     
     // Update database immediately - don't wait for RPC confirmation
     // MetaMask already confirmed the transaction was sent successfully
-    let messageId = "pending";
+    const messageId = "pending";
     
     console.log(`Recording transaction: ${txHash} (RPC confirmation will be attempted in background)`);
 

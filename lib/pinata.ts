@@ -26,7 +26,7 @@ export async function storeImage(image: File | Buffer | Blob, fileName?: string)
     if (typeof File !== 'undefined' && image instanceof File) {
       formData.append('file', image);
     } else if (image instanceof Buffer) {
-      const blob = new Blob([image]);
+      const blob = new Blob([image] as any);
       formData.append('file', blob, fileName || 'image.jpg');
     } else if (image instanceof Blob) {
       formData.append('file', image, fileName || 'image.jpg');

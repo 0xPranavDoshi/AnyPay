@@ -425,11 +425,11 @@ export default function TestPayment() {
 
               {selectedChain && selectedToken !== "" && (
                 <div className="bg-blue-900 border border-blue-700 rounded-lg p-3">
-                  <div className="text-sm text-blue-200 mb-1">= Transaction Preview:</div>
+                  <div className="text-sm text-blue-200 mb-1">Transaction Preview:</div>
                   <div className="text-sm space-y-1">
-                    <div>" Send {TOKEN_NAMES[selectedToken as TokenType]} from {CHAINS[selectedChain as keyof typeof CHAINS].name}</div>
-                    <div>" Auto-convert to USDC via Chainlink CCIP</div>
-                    <div>" {testPayment.payer.username} receives USDC on Base Sepolia</div>
+                    <div>&quot; Send {TOKEN_NAMES[selectedToken as TokenType]} from {CHAINS[selectedChain as keyof typeof CHAINS].name}</div>
+                    <div>&quot; Auto-convert to USDC via Chainlink CCIP</div>
+                    <div>&quot; {testPayment.payer.username} receives USDC on Base Sepolia</div>
                   </div>
                 </div>
               )}
@@ -439,7 +439,7 @@ export default function TestPayment() {
                 disabled={!selectedChain || selectedToken === ""}
                 className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed px-6 py-3 rounded-lg font-semibold"
               >
-                =� Pay ${testPayment.owers[0].amount} Cross-Chain
+                Pay ${testPayment.owers[0].amount} Cross-Chain
               </button>
             </div>
           </div>
@@ -448,7 +448,7 @@ export default function TestPayment() {
         {/* Transaction Progress */}
         {isProcessing && (
           <div className="bg-gray-800 rounded-lg p-6 mb-6">
-            <h3 className="text-lg font-semibold mb-4">� Payment in Progress</h3>
+            <h3 className="text-lg font-semibold mb-4">Payment in Progress</h3>
             
             <div className="space-y-3">
               {[
