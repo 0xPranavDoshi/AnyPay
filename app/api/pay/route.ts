@@ -3,6 +3,26 @@ import { ethers } from "ethers";
 import { MongoClient } from "mongodb";
 import { CrossChainPayment, PaymentStatus, TokenType } from "@/lib/interface";
 
+// Helper function to lookup user by wallet address
+async function lookupUserByWallet(walletAddress: string) {
+  const uri = process.env.MONGODB_URI || process.env.MONGO_URL!;
+  const client = new MongoClient(uri);
+  try {
+    await client.connect();
+    const db = client.db('users'); // Users are in 'users' db, profiles collection
+    const profilesCollection = db.collection('profiles');
+    
+    const user = await profilesCollection.findOne(
+      { walletAddress: { $regex: new RegExp(walletAddress, "i") } },
+      { projection: { username: 1, walletAddress: 1, _id: 0 } }
+    );
+    
+    return user;
+  } finally {
+    await client.close();
+  }
+}
+
 // Contract addresses from deployment
 const CONTRACT_ADDRESSES = {
   "11155111": "0xf3d63a2De78d34A875c7578c979d4cfa11c5E32b", // Ethereum Sepolia
@@ -155,7 +175,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Use existing payment ID if provided, otherwise create new one
-    const paymentId = existingPaymentId || `payment-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+    let paymentId = existingPaymentId || `payment-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
     
     console.log("Payment ID:", paymentId, existingPaymentId ? "(existing)" : "(new)");
 
@@ -195,9 +215,64 @@ export async function POST(req: NextRequest) {
       amountWei = ethers.utils.parseEther(amount.toString());
     }
 
-    // Store payment details for cross-chain transaction
-    // If existingPaymentId is provided, this will update that payment's crossChainPayments array
-    // Otherwise this creates a new payment flow
+    // Check if there's already a pending payment for this user to this recipient with this amount
+    if (!existingPaymentId) {
+      try {
+        const client = new MongoClient(process.env.MONGODB_URI!);
+        await client.connect();
+        const db = client.db(process.env.MONGODB_DB_NAME);
+        const collection = db.collection("payments");
+
+        // Look for existing pending payment where current user owes money to the recipient
+        const existingPaymentQuery = {
+          $and: [
+            { "owers.user.walletAddress": { $regex: new RegExp(userData.walletAddress, "i") } },
+            { status: PaymentStatus.PENDING },
+            { totalAmount: parseFloat(amount) }
+          ]
+        };
+        
+        const existingPayment = await collection.findOne(existingPaymentQuery);
+        
+        if (existingPayment) {
+          console.log("Found existing pending payment where user owes money, will use:", existingPayment._id);
+          // Use the existing payment ID instead of creating a new payment
+          paymentId = String(existingPayment._id);
+        } else {
+          // Only create new payment if none exists
+          // Look up the recipient user to get their real username
+          const recipientUser = await lookupUserByWallet(recipientAddress);
+          
+          const initialPaymentRecord = {
+            _id: paymentId,
+            payer: userData, // User who is paying (sending money)
+            owers: [{
+              user: { 
+                walletAddress: recipientAddress, 
+                username: recipientUser?.username || recipientAddress.slice(0,6) + "..." 
+              },
+              amount: parseFloat(amount)
+            }],
+            totalAmount: parseFloat(amount),
+            description: isSameChain ? "Direct USDC Transfer" : "Cross-chain Payment",
+            status: PaymentStatus.PENDING, // Initially pending
+            crossChainPayments: [], // Will be populated when transaction completes
+            createdAt: new Date(),
+            updatedAt: new Date()
+          };
+
+          await collection.insertOne(initialPaymentRecord);
+          console.log("Created new initial pending payment record:", paymentId);
+        }
+        
+        await client.close();
+      } catch (dbError) {
+        console.error("Failed to create initial payment record:", dbError);
+        // Don't fail the entire request if database creation fails
+        // The payment can still proceed and be created later
+      }
+    }
+
     console.log("Prepared cross-chain payment:", {
       paymentId,
       existingPayment: !!existingPaymentId,

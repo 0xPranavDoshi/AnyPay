@@ -104,25 +104,46 @@ export async function GET(req: NextRequest) {
           });
         }
 
-        // Paid Payments: current user is payer and payment completed
-        if (userIsPayer && payment.status === PaymentStatus.COMPLETED) {
-          const firstOwer = owers[0]?.user;
-          const firstAmount = owers[0]?.amount ?? payment.totalAmount;
-          const firstCCIP = payment.crossChainPayments?.[0];
-          dashboardData.paidPayments.push({
-            paymentId: String(payment._id),
-            from: payer,
-            to: firstOwer,
-            amount: firstAmount,
-            description: payment.description || "Payment",
-            txHash: payment.txHash,
-            paidAt: payment.paidAt || payment.updatedAt || new Date(),
-            crossChainPayments: payment.crossChainPayments || [],
-            tokenType: firstCCIP?.tokenType || 0,
-            sourceChain: firstCCIP?.sourceChain,
-            destinationChain: firstCCIP?.destinationChain,
-            messageId: firstCCIP?.messageId,
-          });
+        // Paid Payments: Show completed payments for the person who actually paid
+        if (payment.status === PaymentStatus.COMPLETED) {
+          // Case 1: Current user was the ower who paid back the debt
+          if (userOwerEntry) {
+            const firstCCIP = payment.crossChainPayments?.[0];
+            dashboardData.paidPayments.push({
+              paymentId: String(payment._id),
+              from: { username: userOwerEntry.user.username, walletAddress: userOwerEntry.user.walletAddress }, // Current user (who paid)
+              to: payer, // Original payer who is now receiving
+              amount: userOwerEntry.amount,
+              description: payment.description || "Payment",
+              txHash: payment.txHash,
+              paidAt: payment.paidAt || payment.updatedAt || new Date(),
+              crossChainPayments: payment.crossChainPayments || [],
+              tokenType: firstCCIP?.tokenType || 0,
+              sourceChain: firstCCIP?.sourceChain,
+              destinationChain: firstCCIP?.destinationChain,
+              messageId: firstCCIP?.messageId,
+            });
+          }
+          // Case 2: Current user was the original payer and someone paid them back  
+          else if (userIsPayer) {
+            const firstOwer = owers[0]?.user;
+            const firstAmount = owers[0]?.amount ?? payment.totalAmount;
+            const firstCCIP = payment.crossChainPayments?.[0];
+            dashboardData.paidPayments.push({
+              paymentId: String(payment._id),
+              from: firstOwer, // Person who paid back
+              to: payer, // Current user (original payer)
+              amount: firstAmount,
+              description: payment.description || "Payment",
+              txHash: payment.txHash,
+              paidAt: payment.paidAt || payment.updatedAt || new Date(),
+              crossChainPayments: payment.crossChainPayments || [],
+              tokenType: firstCCIP?.tokenType || 0,
+              sourceChain: firstCCIP?.sourceChain,
+              destinationChain: firstCCIP?.destinationChain,
+              messageId: firstCCIP?.messageId,
+            });
+          }
         }
 
         // Owed To You: current user is the payer and others owe them (not completed)

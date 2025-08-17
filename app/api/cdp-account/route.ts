@@ -52,12 +52,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // const paymentResponse = decodeXPaymentResponse(
-    //   response.headers.get("x-payment-response")!
-    // );
-    // console.log("paymentResponse", paymentResponse);
+    const paymentResponse = decodeXPaymentResponse(
+      response.headers.get("x-payment-response")!
+    );
+    console.log("paymentResponse", paymentResponse);
 
-    // console.log("response", response);
+    console.log("response", response);
 
     return response;
   } catch (error) {

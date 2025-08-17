@@ -10,6 +10,26 @@ const RPC_URLS = {
   "84532": "https://sepolia.base.org"
 };
 
+// Helper function to lookup user by wallet address
+async function lookupUserByWallet(walletAddress: string) {
+  const uri = process.env.MONGODB_URI || process.env.MONGO_URL!;
+  const client = new MongoClient(uri);
+  try {
+    await client.connect();
+    const db = client.db('users'); // Users are in 'users' db, profiles collection
+    const profilesCollection = db.collection('profiles');
+    
+    const user = await profilesCollection.findOne(
+      { walletAddress: { $regex: new RegExp(walletAddress, "i") } },
+      { projection: { username: 1, walletAddress: 1, _id: 0 } }
+    );
+    
+    return user;
+  } finally {
+    await client.close();
+  }
+}
+
 interface UpdateOptions {
   tokenType?: number;
   sourceChain?: string;
@@ -50,90 +70,136 @@ async function updatePaymentWithCrossChain(paymentId: string, crossChainData: an
       query,
       { 
         $push: { crossChainPayments: crossChainData } as any,
-        $set: { updatedAt: new Date() }
+        $set: { 
+          status: PaymentStatus.COMPLETED,
+          txHash: crossChainData.txHash,
+          paidAt: new Date(),
+          updatedAt: new Date()
+        }
       }
     );
     
     console.log("Update result:", { paymentId, matchedCount: result.matchedCount, modifiedCount: result.modifiedCount });
     
-    if (result.matchedCount === 0) {
-      console.log("No payment found with ID:", paymentId, "- checking for existing debt to update");
+    if (result.matchedCount > 0) {
+      console.log("Successfully updated existing payment with ID:", paymentId);
+      return; // Payment updated successfully, exit early
+    }
+    
+    console.log("No payment found with ID:", paymentId, "- checking for existing debt to update");
+    
+    // First try to find the ORIGINAL pending payment where user owes money
+    if (payer && recipientAddress && amount) {
+      console.log("Searching for ORIGINAL pending payment:", {
+        payerWallet: payer.walletAddress.toLowerCase(),
+        recipientAddress: recipientAddress.toLowerCase(),
+        amount
+      });
       
-      // First try to find existing payment where user owes money to this recipient
-      if (payer && recipientAddress && amount) {
-        console.log("Searching for existing debt:", {
-          payerWallet: payer.walletAddress.toLowerCase(),
-          recipientAddress: recipientAddress.toLowerCase(),
-          amount
-        });
+      // Find the original pending payment that matches this transaction
+      const originalPayment = await collection.findOne({
+        $and: [
+          { "owers.user.walletAddress": { $regex: new RegExp(payer.walletAddress, "i") } },
+          { status: PaymentStatus.PENDING },
+          { totalAmount: amount }
+        ]
+      });
+      
+      if (originalPayment) {
+        console.log("Found ORIGINAL pending payment to update:", originalPayment._id);
         
-        // Find all payments where user is the ower (owes money)
-        const allDebts = await collection.find({
-          "owers.user.walletAddress": payer.walletAddress.toLowerCase(),
-          status: { $ne: PaymentStatus.COMPLETED }
-        }).toArray();
+        // Update the original payment to mark as completed
+        await collection.updateOne(
+          { _id: originalPayment._id },
+          { 
+            $set: { 
+              status: PaymentStatus.COMPLETED,
+              txHash: crossChainData.txHash,
+              paidAt: new Date(),
+              updatedAt: new Date()
+            },
+            $push: { crossChainPayments: crossChainData } as any
+          }
+        );
         
-        console.log("Found uncompleted debts:", allDebts.length);
-        allDebts.forEach(debt => {
-          console.log("Debt:", {
-            id: debt._id,
-            payer: debt.payer?.walletAddress,
-            amount: debt.totalAmount || debt.amount,
-            owers: debt.owers?.map((o: any) => ({ wallet: o.user.walletAddress, amount: o.amount }))
-          });
-        });
-        
-        // For now, update the first matching debt (we can make this more specific later)
-        const existingDebt = allDebts[0];
-        
-        if (existingDebt) {
-          console.log("Updating existing debt:", existingDebt._id);
-          
-          // Update the existing debt to mark as completed
-          await collection.updateOne(
-            { _id: existingDebt._id },
-            { 
-              $set: { 
-                status: PaymentStatus.COMPLETED,
-                txHash: crossChainData.txHash,
-                paidAt: new Date(),
-                updatedAt: new Date()
-              },
-              $push: { crossChainPayments: crossChainData } as any
-            }
-          );
-          
-          console.log("Updated existing debt to completed status");
-          return; // Exit early, don't create new record
-        } else {
-          console.log("No existing debt found for user");
-        }
+        console.log("Updated ORIGINAL pending payment to completed");
+        return; // Exit early, don't create new record
       }
       
-      console.log("No existing debt found, creating new payment record");
+      // Fallback: Find all payments where user is the ower (owes money)
+      const allDebts = await collection.find({
+        "owers.user.walletAddress": { $regex: new RegExp(payer.walletAddress, "i") },
+        status: { $ne: PaymentStatus.COMPLETED }
+      }).toArray();
       
-      // Create payment record for both same-chain and cross-chain transactions
-      let paymentRecord: any;
+      console.log("Found uncompleted debts:", allDebts.length);
+      allDebts.forEach(debt => {
+        console.log("Debt:", {
+          id: debt._id,
+          payer: debt.payer?.walletAddress,
+          amount: debt.totalAmount || debt.amount,
+          owers: debt.owers?.map((o: any) => ({ wallet: o.user.walletAddress, amount: o.amount }))
+        });
+      });
       
-      if (tokenType === 0 && sourceChain === destinationChain) {
-        // Same-chain USDC transaction
-        console.log("Creating new payment record for same-chain USDC transaction");
-        paymentRecord = {
-          _id: paymentId,
-          paymentType: "direct-transfer",
-          status: PaymentStatus.COMPLETED,
-          crossChainPayments: [crossChainData],
-          createdAt: new Date(),
-          updatedAt: new Date()
-        };
-      } else if (payer && recipientAddress && amount) {
+      // For now, update the first matching debt (we can make this more specific later)
+      const existingDebt = allDebts[0];
+      
+      if (existingDebt) {
+        console.log("Updating existing debt:", existingDebt._id);
+        
+        // Update the existing debt to mark as completed
+        await collection.updateOne(
+          { _id: existingDebt._id },
+          { 
+            $set: { 
+              status: PaymentStatus.COMPLETED,
+              txHash: crossChainData.txHash,
+              paidAt: new Date(),
+              updatedAt: new Date()
+            },
+            $push: { crossChainPayments: crossChainData } as any
+          }
+        );
+        
+        console.log("Updated existing debt to completed status");
+        return; // Exit early, don't create new record
+      } else {
+        console.log("No existing debt found for user");
+      }
+    }
+    
+    console.log("No existing debt found, creating new payment record");
+    
+    // Create payment record for both same-chain and cross-chain transactions
+    let paymentRecord: any;
+    
+    if (tokenType === 0 && sourceChain === destinationChain) {
+      // Same-chain USDC transaction
+      console.log("Creating new payment record for same-chain USDC transaction");
+      paymentRecord = {
+        _id: paymentId,
+        paymentType: "direct-transfer",
+        status: PaymentStatus.COMPLETED,
+        crossChainPayments: [crossChainData],
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+          } else if (payer && recipientAddress && amount) {
         // Cross-chain CCIP transaction
         console.log("Creating new payment record for cross-chain CCIP transaction");
+        
+        // Look up the recipient user to get their real username
+        const recipientUser = await lookupUserByWallet(recipientAddress);
+        
         paymentRecord = {
           _id: paymentId,
           payer: payer, // You are the payer (sending money)
           owers: [{ 
-            user: { walletAddress: recipientAddress, username: recipientAddress.slice(0,6) + "..." }, // Recipient receives the money
+            user: { 
+              walletAddress: recipientAddress, 
+              username: recipientUser?.username || recipientAddress.slice(0,6) + "..." 
+            }, // Recipient receives the money
             amount: amount 
           }],
           totalAmount: amount,
@@ -146,28 +212,27 @@ async function updatePaymentWithCrossChain(paymentId: string, crossChainData: an
           updatedAt: new Date()
         };
       }
-        
-      if (paymentRecord) {
+      
+    if (paymentRecord) {
+      try {
+        await collection.insertOne(paymentRecord);
+        console.log("Successfully created new payment record:", paymentId);
+      } catch (insertError) {
+        console.log("Failed to create payment record:", insertError);
+        // Try to update with upsert instead
         try {
-          await collection.insertOne(paymentRecord);
-          console.log("Successfully created new payment record:", paymentId);
-        } catch (insertError) {
-          console.log("Failed to create payment record:", insertError);
-          // Try to update with upsert instead
-          try {
-            await collection.updateOne(
-              query, // Use the same query object
-              { 
-                $setOnInsert: paymentRecord,
-                $push: { crossChainPayments: crossChainData } as any,
-                $set: { updatedAt: new Date() }
-              },
-              { upsert: true }
-            );
-            console.log("Successfully upserted payment record:", paymentId);
-          } catch (upsertError) {
-            console.log("Upsert also failed:", upsertError);
-          }
+          await collection.updateOne(
+            query, // Use the same query object
+            { 
+              $setOnInsert: paymentRecord,
+              $push: { crossChainPayments: crossChainData } as any,
+              $set: { updatedAt: new Date() }
+            },
+            { upsert: true }
+          );
+          console.log("Successfully upserted payment record:", paymentId);
+        } catch (upsertError) {
+          console.log("Upsert also failed:", upsertError);
         }
       }
     }
