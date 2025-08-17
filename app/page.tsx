@@ -156,6 +156,22 @@ export default function Home() {
                 </span>
               </div>
             </div>
+
+            <div className="group relative">
+              <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-primary)]/10 to-transparent rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+              <div className="relative bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-2xl px-8 py-4 flex items-center gap-4 hover:scale-105 hover:-translate-y-2 transition-all duration-300 hover:shadow-xl hover:shadow-[var(--color-primary)]/20">
+                <Image
+                  src="/partners/hardhat.jpg"
+                  alt="HardHat"
+                  width={28}
+                  height={28}
+                  className="object-contain rounded-full group-hover:scale-110 transition-transform duration-300"
+                />
+                <span className="text-[var(--color-text-secondary)] text-lg font-semibold group-hover:text-[var(--color-primary)] transition-colors duration-300">
+                  HardHat
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -452,6 +468,22 @@ export default function Home() {
                   />
                   <span className="text-[var(--color-text-secondary)] text-sm font-semibold group-hover:text-[var(--color-primary)] transition-colors duration-300">
                     Chainlink
+                  </span>
+                </div>
+              </div>
+
+              <div className="group relative">
+                <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-primary)]/10 to-transparent rounded-xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                <div className="relative bg-gradient-to-br from-[var(--color-bg-card)] to-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-xl px-6 py-3 flex items-center gap-3 hover:scale-105 hover:-translate-y-1 transition-all duration-300 hover:shadow-lg hover:shadow-[var(--color-primary)]/20">
+                  <Image
+                    src="/partners/hardhat.jpg"
+                    alt="HardHat"
+                    width={20}
+                    height={20}
+                    className="object-contain rounded-full group-hover:scale-110 transition-transform duration-300"
+                  />
+                  <span className="text-[var(--color-text-secondary)] text-sm font-semibold group-hover:text-[var(--color-primary)] transition-colors duration-300">
+                    HardHat
                   </span>
                 </div>
               </div>
