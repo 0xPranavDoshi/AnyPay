@@ -11,9 +11,6 @@ import remarkGfm from "remark-gfm";
 import SelectedUsers from "@/components/SelectedUsers";
 import UserMentionDropdown from "@/components/UserMentionDropdown";
 import { ethers } from "ethers";
-import { privateKeyToAccount, toAccount } from "viem/accounts";
-import { CdpClient } from "@coinbase/cdp-sdk";
-import axios from "axios";
 
 interface User {
   username: string;
@@ -72,21 +69,36 @@ export default function Dashboard() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Helper function to get explorer URL
-  const getExplorerUrl = (txHash: string, chainId: string, tokenType: number, messageId?: string, sourceChain?: string, destinationChain?: string) => {
+  const getExplorerUrl = (
+    txHash: string,
+    chainId: string,
+    tokenType: number,
+    messageId?: string,
+    sourceChain?: string,
+    destinationChain?: string
+  ) => {
     // Get the chain explorer URL first
-    const baseUrl = chainId === "84532" 
-      ? "https://sepolia.basescan.org/tx/" 
-      : chainId === "421614" 
-      ? "https://sepolia.arbiscan.io/tx/" 
-      : "https://sepolia.etherscan.io/tx/";
-    
+    const baseUrl =
+      chainId === "84532"
+        ? "https://sepolia.basescan.org/tx/"
+        : chainId === "421614"
+        ? "https://sepolia.arbiscan.io/tx/"
+        : "https://sepolia.etherscan.io/tx/";
+
     // For CCIP tokens going cross-chain, use CCIP explorer if we have messageId
-    if ((tokenType === 1 || tokenType === 2) && sourceChain !== destinationChain) {
-      if (messageId && messageId !== "pending" && messageId !== "direct-transfer") {
+    if (
+      (tokenType === 1 || tokenType === 2) &&
+      sourceChain !== destinationChain
+    ) {
+      if (
+        messageId &&
+        messageId !== "pending" &&
+        messageId !== "direct-transfer"
+      ) {
         return `https://ccip.chain.link/msg/${messageId}`;
       }
     }
-    
+
     // For everything else (USDC transfers, same-chain CCIP, or pending CCIP), use chain explorer
     return `${baseUrl}${txHash}`;
   };
@@ -290,10 +302,11 @@ export default function Dashboard() {
       // Step 3: Execute payment (cross-chain or direct transfer)
       // Use the isSameChain flag from API response for consistency
       // Only USDC same-chain transfers should be treated as direct transfers
-      const isSameChain = transactionParams.isSameChain && paymentData.tokenType === 0;
-      
+      const isSameChain =
+        transactionParams.isSameChain && paymentData.tokenType === 0;
+
       let tx;
-      
+
       if (isSameChain) {
         // Same-chain USDC transfer - use direct ERC20 transfer
         setTransactionState((prev) => ({
@@ -304,9 +317,7 @@ export default function Dashboard() {
 
         const usdcContract = new ethers.Contract(
           transactionParams.tokenAddress,
-          [
-            "function transfer(address to, uint256 amount) returns (bool)",
-          ],
+          ["function transfer(address to, uint256 amount) returns (bool)"],
           signer
         );
 
@@ -317,7 +328,7 @@ export default function Dashboard() {
             gasLimit: 100000, // Much lower gas for simple transfer
           }
         );
-        
+
         console.log("Direct USDC transfer sent:", tx.hash);
       } else {
         // Cross-chain payment - use CCIP contract
@@ -363,7 +374,7 @@ export default function Dashboard() {
             value: ccipFees.add(ethers.utils.parseEther("0.001")), // Much smaller buffer - total ~0.004 ETH
           }
         );
-        
+
         console.log("Cross-chain transaction sent:", tx.hash);
       }
 
@@ -371,8 +382,12 @@ export default function Dashboard() {
 
       if (isSameChain) {
         // For same-chain USDC transfers, show transaction immediately
-        const explorerUrl = getExplorerUrl(tx.hash, paymentData.sourceChain, paymentData.tokenType);
-        
+        const explorerUrl = getExplorerUrl(
+          tx.hash,
+          paymentData.sourceChain,
+          paymentData.tokenType
+        );
+
         setTransactionState({
           isProcessing: false,
           status: "✅ USDC Transfer Sent!",
@@ -394,16 +409,18 @@ export default function Dashboard() {
             recipientAddress: transactionParams.recipientAddress,
             amount: paymentModal.amount,
             tokenType: paymentData.tokenType,
-            payer: user
+            payer: user,
+          }),
+        })
+          .then(() => {
+            // Refresh payments immediately to show in paid section
+            if (user) {
+              fetchUserPayments(user.walletAddress);
+            }
           })
-        }).then(() => {
-          // Refresh payments immediately to show in paid section
-          if (user) {
-            fetchUserPayments(user.walletAddress);
-          }
-        }).catch(error => {
-          console.log("Background payment recording failed:", error);
-        });
+          .catch((error) => {
+            console.log("Background payment recording failed:", error);
+          });
 
         // Close modal
         setTimeout(() => {
@@ -411,8 +428,12 @@ export default function Dashboard() {
         }, 1000);
       } else {
         // For cross-chain payments, show transaction immediately and submit to API
-        const explorerUrl = getExplorerUrl(tx.hash, paymentData.sourceChain, paymentData.tokenType);
-        
+        const explorerUrl = getExplorerUrl(
+          tx.hash,
+          paymentData.sourceChain,
+          paymentData.tokenType
+        );
+
         setTransactionState({
           isProcessing: false,
           status: "✅ Cross-chain Payment Sent!",
@@ -436,16 +457,18 @@ export default function Dashboard() {
             // Add payment details for record creation
             payer: user,
             recipientAddress: transactionParams.recipientAddress,
-            amount: paymentModal.amount
+            amount: paymentModal.amount,
+          }),
+        })
+          .then(() => {
+            // Refresh payments immediately to show in paid section
+            if (user) {
+              fetchUserPayments(user.walletAddress);
+            }
           })
-        }).then(() => {
-          // Refresh payments immediately to show in paid section
-          if (user) {
-            fetchUserPayments(user.walletAddress);
-          }
-        }).catch(error => {
-          console.log("Background API call failed:", error);
-        });
+          .catch((error) => {
+            console.log("Background API call failed:", error);
+          });
 
         // Close modal
         setTimeout(() => {
@@ -858,7 +881,7 @@ export default function Dashboard() {
             )}
             <button
               onClick={handleLogout}
-              className="bg-gradient-to-r from-blue-600 to-slate-600 text-white px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200 hover:shadow-lg hover:shadow-blue-600/30 border-0 cursor-pointer"
+              className="bg-gradient-to-r from-[var(--color-primary)]/20 to-[var(--color-primary)]/30 text-[var(--color-primary)] px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200 hover:shadow-sm hover:shadow-[var(--color-primary)]/20 border border-[var(--color-primary)]/30 cursor-pointer"
             >
               Disconnect
             </button>
@@ -887,11 +910,12 @@ export default function Dashboard() {
                   stroke="currentColor"
                   viewBox="0 0 24 24"
                 >
+                  <circle cx="12" cy="12" r="10" strokeWidth="2" />
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                    strokeWidth="2"
+                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"
                   />
                 </svg>
                 You Owe
@@ -1038,11 +1062,13 @@ export default function Dashboard() {
                           <div className="p-3 bg-blue-900/10 rounded-lg border border-blue-500/20">
                             {item.txHash && (
                               <div className="mb-3">
-                                <span className="text-sm text-blue-600 font-medium block mb-1">Transaction Hash:</span>
+                                <span className="text-sm text-blue-600 font-medium block mb-1">
+                                  Transaction Hash:
+                                </span>
                                 <a
                                   href={getExplorerUrl(
-                                    item.txHash, 
-                                    item.sourceChain, 
+                                    item.txHash,
+                                    item.sourceChain,
                                     item.tokenType || 0,
                                     item.messageId,
                                     item.sourceChain,
@@ -1056,7 +1082,7 @@ export default function Dashboard() {
                                 </a>
                               </div>
                             )}
-                            
+
                             <div className="grid grid-cols-2 gap-4 text-xs text-[var(--color-text-muted)]">
                               <div>
                                 <span className="font-medium">From:</span>{" "}
@@ -1160,7 +1186,7 @@ export default function Dashboard() {
                               )}
                             </div>
                             <div className="text-right">
-                              <p className="text-xl font-bold text-red-500">
+                              <p className="text-xl font-bold text-white">
                                 ${item.amount.toFixed(2)}
                               </p>
                             </div>
@@ -1226,7 +1252,7 @@ export default function Dashboard() {
                                 item.paymentId
                               )
                             }
-                            className="w-full bg-gradient-to-r from-red-100 to-red-200 text-red-700 py-3 rounded-lg font-semibold cursor-pointer transition-all duration-200 hover:shadow-sm hover:shadow-red-100/20"
+                            className="w-full bg-gradient-to-r from-red-300/20 to-red-300/30 text-red-300 py-3 rounded-lg font-semibold cursor-pointer transition-all duration-200 hover:shadow-sm hover:shadow-red-300/20 border border-red-300/30"
                           >
                             <div className="flex items-center justify-center gap-2">
                               <svg
@@ -1318,7 +1344,7 @@ export default function Dashboard() {
                               )}
                             </div>
                             <div className="text-right">
-                              <p className="text-xl font-bold text-green-400">
+                              <p className="text-xl font-bold text-green-300">
                                 ${item.amount.toFixed(2)}
                               </p>
                               <p className="text-xs text-[var(--color-text-muted)]">
@@ -1737,38 +1763,47 @@ export default function Dashboard() {
       />
 
       {/* Simple Transaction Success Notification */}
-      {transactionState.status && !transactionState.isProcessing && transactionState.txHash && (
-        <div className="fixed top-4 right-4 z-50 bg-green-600 border border-green-500 rounded-lg p-4 max-w-md shadow-lg">
-          <div className="flex justify-between items-start mb-2">
-            <div>
-              <p className="text-sm text-white font-medium">✅ {transactionState.status}</p>
-              <p className="text-xs text-green-100 mt-1">Transaction Hash:</p>
-              <a
-                href={getExplorerUrl(
-                  transactionState.txHash, 
-                  transactionState.sourceChain || "84532", 
-                  transactionState.tokenType || 0,
-                  undefined,
-                  transactionState.sourceChain,
-                  transactionState.sourceChain // This will be updated when we have destination chain
-                )}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-green-100 hover:text-white text-xs font-mono underline break-all"
+      {transactionState.status &&
+        !transactionState.isProcessing &&
+        transactionState.txHash && (
+          <div className="fixed top-4 right-4 z-50 bg-green-600 border border-green-500 rounded-lg p-4 max-w-md shadow-lg">
+            <div className="flex justify-between items-start mb-2">
+              <div>
+                <p className="text-sm text-white font-medium">
+                  ✅ {transactionState.status}
+                </p>
+                <p className="text-xs text-green-100 mt-1">Transaction Hash:</p>
+                <a
+                  href={getExplorerUrl(
+                    transactionState.txHash,
+                    transactionState.sourceChain || "84532",
+                    transactionState.tokenType || 0,
+                    undefined,
+                    transactionState.sourceChain,
+                    transactionState.sourceChain // This will be updated when we have destination chain
+                  )}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-green-100 hover:text-white text-xs font-mono underline break-all"
+                >
+                  {transactionState.txHash}
+                </a>
+              </div>
+              <button
+                onClick={() =>
+                  setTransactionState((prev) => ({
+                    ...prev,
+                    status: "",
+                    txHash: undefined,
+                  }))
+                }
+                className="text-green-200 hover:text-white ml-2 text-sm"
               >
-                {transactionState.txHash}
-              </a>
+                ✕
+              </button>
             </div>
-            <button 
-              onClick={() => setTransactionState(prev => ({ ...prev, status: "", txHash: undefined }))}
-              className="text-green-200 hover:text-white ml-2 text-sm"
-            >
-              ✕
-            </button>
           </div>
-        </div>
-      )}
-
+        )}
     </div>
   );
 }
