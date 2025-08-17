@@ -193,7 +193,12 @@ export default function PaymentModal({ isOpen, onClose, recipientUser, amount, o
         return;
       }
 
-      if (!balanceResult.hasBalance) {
+      const priceDiff = balanceResult.requiredBalance - balanceResult.currentBalance;
+
+      if (priceDiff > 0) {
+        // Calculate the difference between required and current balance, rounded up to nearest cent
+        const presetAmount = Math.ceil(priceDiff * 100) / 100; // Round up to nearest cent
+        
         // Get onramp URL for insufficient balance screen
         const onrampResponse = await fetch('/api/onramp-url', {
           method: 'POST',
@@ -202,7 +207,7 @@ export default function PaymentModal({ isOpen, onClose, recipientUser, amount, o
             address: currentAccount,
             blockchains: [sourceChain === "11155111" ? "ethereum" : sourceChain === "421614" ? "arbitrum" : "base"],
             assets: ['USDC'], // Default to USDC for onramp
-            presetFiatAmount: Math.ceil(amount * 1.1), // Add 10% buffer
+            presetFiatAmount: presetAmount,
             redirectUrl: window.location.href
           })
         });
