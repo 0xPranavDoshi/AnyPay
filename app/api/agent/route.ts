@@ -7,7 +7,7 @@ import {
   createFreshSession,
 } from "../../../lib/mongo";
 import { callGemini } from "../../../lib/gemini";
-import { Payment, User } from "../../../lib/interface";
+import { Payment, User, PaymentStatus } from "../../../lib/interface";
 import { MongoClient } from "mongodb";
 import { storeImage, storeImageFromUrl } from "../../../lib/pinata";
 
@@ -18,7 +18,7 @@ interface BillSplittingData {
   payer?: User;
   splitMethod?: "equal" | "itemwise" | "ratio" | "custom";
   splitDetails?: any;
-  settlement?: Payment[] | null;
+  settlement?: string[] | null; // Array of payment IDs instead of Payment objects
   confirmed?: boolean;
 }
 
@@ -203,10 +203,9 @@ async function handleSaveSettlement(
   allUsers: User[],
   billData: BillSplittingData
 ): Promise<string[]> {
-  // Build a single Payment document per settlement with payer + owers
-  let payer: User | undefined = billData.payer;
-  const owerMap = new Map<string, { user: User; amount: number }>();
-
+  // Create individual payment records using new one-to-one structure
+  const paymentIds: string[] = [];
+  
   for (const paymentData of params.payments) {
     const sender = allUsers.find((u) => u.username === paymentData.sender);
     const recipient = allUsers.find((u) => u.username === paymentData.recipient);
@@ -217,34 +216,23 @@ async function handleSaveSettlement(
       );
     }
 
-    if (!payer) payer = recipient; // Infer if not already set
+    const amount = Number(paymentData.totalAmount) || 0;
+    
+    const payment: Payment = {
+      payer: sender, // Person who owes money
+      ower: recipient, // Person who is owed money
+      amount,
+      description: billData.splitMethod ? `Split: ${billData.splitMethod}` : "Bill split payment",
+      status: PaymentStatus.UNPAID,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
 
-    const key = sender.username;
-    const prev = owerMap.get(key);
-    const amt = Number(paymentData.totalAmount) || 0;
-    if (prev) {
-      prev.amount += amt;
-    } else {
-      owerMap.set(key, { user: sender, amount: amt });
-    }
+    const paymentId = await insertSettlementPayment(payment);
+    paymentIds.push(paymentId);
   }
 
-  if (!payer) {
-    throw new Error("Payer not specified for settlement");
-  }
-
-  const owers = Array.from(owerMap.values());
-  const totalAmount = billData.totalAmount || owers.reduce((sum, o) => sum + (o.amount || 0), 0);
-
-  const settlementPayment: Payment = {
-    payer,
-    owers,
-    totalAmount,
-    description: billData.splitMethod ? `Split: ${billData.splitMethod}` : undefined,
-  };
-
-  const paymentId = await insertSettlementPayment(settlementPayment);
-  return [paymentId];
+  return paymentIds;
 }
 
 // Helper to persist image via Pinata and return URL

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import Image from "next/image";
 import { removeCookie } from "@/utils/cookie";
-import { CrossChainPayment, TokenType } from "@/lib/interface";
+import { CrossChainPayment, TokenType, Payment, PaymentStatus } from "@/lib/interface";
 import PaymentModal from "@/components/PaymentModal";
 import TransactionModal from "@/components/TransactionModal";
 import ReactMarkdown from "react-markdown";
@@ -17,14 +17,7 @@ interface User {
   walletAddress: string;
 }
 
-interface Payment {
-  payer: User;
-  totalAmount: number;
-  owers: {
-    user: User;
-    amount: number;
-  }[];
-}
+// Remove local Payment interface - using the one from @/lib/interface
 
 interface ChatMessage {
   role: "user" | "bot";
@@ -1033,11 +1026,10 @@ export default function Dashboard() {
                             <div>
                               <p className="font-semibold text-[var(--color-text-primary)]">
                                 Paid to{" "}
-                                {item.recipientUser?.username || "Unknown"}
+                                {item.to?.username || "Unknown"}
                               </p>
                               <p className="text-sm text-[var(--color-text-muted)] font-mono">
-                                {item.recipientUser?.walletAddress ||
-                                  item.recipient}
+                                {item.to?.walletAddress || item.recipient}
                               </p>
                               {item.description && (
                                 <p className="text-xs text-[var(--color-text-muted)] mt-1">
@@ -1045,7 +1037,7 @@ export default function Dashboard() {
                                 </p>
                               )}
                               <p className="text-xs text-blue-500 mt-1">
-                                ✅ Completed on{" "}
+                                Completed on{" "}
                                 {new Date(item.paidAt).toLocaleDateString()}
                               </p>
                             </div>
@@ -1088,20 +1080,6 @@ export default function Dashboard() {
                                 </a>
                               </div>
                             )}
-
-                            <div className="grid grid-cols-2 gap-4 text-xs text-[var(--color-text-muted)]">
-                              <div>
-                                <span className="font-medium">From:</span>{" "}
-                                {CHAINS[item.sourceChain as keyof typeof CHAINS]
-                                  ?.name || item.sourceChain}
-                              </div>
-                              <div>
-                                <span className="font-medium">To:</span>{" "}
-                                {CHAINS[
-                                  item.destinationChain as keyof typeof CHAINS
-                                ]?.name || item.destinationChain}
-                              </div>
-                            </div>
 
                             {/* CCIP Tracking */}
                             {item.messageId &&
