@@ -1,6 +1,5 @@
 export const runtime = "nodejs";
 
-import { cookies } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 import {
   getSession,
@@ -11,7 +10,6 @@ import { callGemini } from "../../../lib/gemini";
 import { Payment, User } from "../../../lib/interface";
 import { MongoClient } from "mongodb";
 import { storeImage, storeImageFromUrl } from "../../../lib/pinata";
-import { getCookie } from "@/utils/cookie-server";
 
 interface BillSplittingData {
   totalAmount?: number;
