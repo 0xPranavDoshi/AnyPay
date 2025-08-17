@@ -1,8 +1,10 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useState } from "react";
 import { setCookie } from "@/utils/cookie";
+import EmbeddedWalletFlow from "@/components/EmbeddedWalletFlow";
 
 // Extend Window interface to include ethereum
 declare global {
@@ -19,8 +21,6 @@ export default function SignUp() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const [isCreatingEmbeddedWallet, setIsCreatingEmbeddedWallet] =
-    useState(false);
 
   const connectWallet = async () => {
     try {
@@ -51,28 +51,10 @@ export default function SignUp() {
     }
   };
 
-  const createEmbeddedWallet = async () => {
-    try {
-      setIsCreatingEmbeddedWallet(true);
-      setError("");
-
-      // Simulate embedded wallet creation
-      // In a real implementation, this would call your backend API
-      const mockWalletAddress =
-        "0x" +
-        Array.from({ length: 40 }, () =>
-          Math.floor(Math.random() * 16).toString(16)
-        ).join("");
-
-      setWalletAddress(mockWalletAddress);
-      setSuccess("Embedded wallet created successfully!");
-      console.log("Embedded wallet created:", mockWalletAddress);
-    } catch (error) {
-      console.error("Error creating embedded wallet:", error);
-      setError("Failed to create embedded wallet. Please try again.");
-    } finally {
-      setIsCreatingEmbeddedWallet(false);
-    }
+  const handleEmbeddedWalletCreated = (address: string) => {
+    setWalletAddress(address);
+    setSuccess("Embedded wallet created successfully!");
+    console.log("Embedded wallet created:", address);
   };
 
   const handleSignUp = async () => {
@@ -151,12 +133,12 @@ export default function SignUp() {
               AnyPay
             </span>
           </div>
-          <a
+          <Link
             href="/"
             className="bg-gradient-to-r from-[var(--color-primary)]/20 to-[var(--color-primary)]/30 text-[var(--color-primary)] px-6 py-3 rounded-xl font-semibold hover:scale-105 transition-all duration-200 hover:shadow-sm hover:shadow-[var(--color-primary)]/20 border border-[var(--color-primary)]/30 cursor-pointer"
           >
             Back to Home
-          </a>
+          </Link>
         </div>
       </nav>
 
@@ -285,41 +267,11 @@ export default function SignUp() {
                     </span>
                   </button>
 
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-[var(--color-border)]"></div>
-                    </div>
-                    <div className="relative flex justify-center text-sm">
-                      <span className="px-2 bg-[var(--color-bg-card)] text-[var(--color-text-secondary)]">
-                        or
-                      </span>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={createEmbeddedWallet}
-                    disabled={isCreatingEmbeddedWallet}
-                    className="group relative cursor-pointer overflow-hidden w-full bg-gradient-to-br from-[var(--color-bg-secondary)] to-[var(--color-bg-primary)] border border-[var(--color-border)] text-[var(--color-text-primary)] px-8 py-2.5 rounded-xl font-bold text-lg transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--color-primary)]/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <span className="relative z-10 flex items-center justify-center gap-3">
-                      <Image
-                        src="/partners/coinbase.png"
-                        alt="Coinbase"
-                        width={20}
-                        height={20}
-                        className="w-5 h-5"
-                      />
-                      {isCreatingEmbeddedWallet
-                        ? "Creating..."
-                        : "Create Coinbase Embedded Wallet"}
-                    </span>
-                    <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                  </button>
+                  <EmbeddedWalletFlow
+                    onWalletCreated={handleEmbeddedWalletCreated}
+                  />
                 </div>
               )}
-              <p className="text-[var(--color-text-muted)] text-sm mt-1.5 text-left">
-                Connect any Web3 wallet or create a new embedded wallet.
-              </p>
             </div>
 
             {/* Sign Up Button */}
@@ -347,7 +299,7 @@ export default function SignUp() {
             <p className="text-[var(--color-text-secondary)] text-base">
               Already have an account?{" "}
               <span className="text-[var(--color-primary)] cursor-pointer hover:underline font-semibold">
-                <a href="/login">Sign in here</a>
+                <Link href="/login">Sign in here</Link>
               </span>
             </p>
           </div>
