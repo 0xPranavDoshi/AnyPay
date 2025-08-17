@@ -1,0 +1,6 @@
+[testnet]
+address = "0xe98ef0a79eb5f04e"
+privateKey = "1d3ccb3d31c1025d0e3010ce4c4debeea61b8f7929f0d0722bff9945922b1c58"
+publicKey = "b8ee5370da174cc98792c6332034f8ace20b78da2c4c60c784655686a3cd2919d94b2e69ce2332870715806b0de1a9db368033645486f64c6d4505ddaec560e1"
+sigAlgo = "ECDSA_P256"
+hashAlgo = "SHA3_256"
