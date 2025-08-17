@@ -159,8 +159,16 @@ export async function POST(req: NextRequest) {
     
     console.log("Payment ID:", paymentId, existingPaymentId ? "(existing)" : "(new)");
 
-    // Get contract address  
-    const contractAddress = CONTRACT_ADDRESSES[sourceChain];
+    // Check if this is a same-chain USDC transaction
+    const isSameChain = sourceChain === destinationChain && tokenType === TokenType.USDC;
+
+    // Get contract address - for same-chain USDC, use token contract directly
+    let contractAddress;
+    if (isSameChain) {
+      contractAddress = TOKEN_ADDRESSES[sourceChain].USDC; // Direct ERC20 transfer
+    } else {
+      contractAddress = CONTRACT_ADDRESSES[sourceChain]; // CCIP contract
+    }
 
     // Get token address based on token type
     let tokenAddress = "";
@@ -213,7 +221,8 @@ export async function POST(req: NextRequest) {
         recipientAddress,
         destinationChainSelector: CHAIN_SELECTORS[destinationChain],
         tokenType,
-        gasLimit: "250000"
+        gasLimit: isSameChain ? "100000" : "250000", // Lower gas for direct transfers
+        isSameChain: isSameChain // Flag for frontend to use direct transfer
       },
       status: PaymentStatus.PENDING
     });
@@ -250,15 +259,16 @@ export async function GET(req: NextRequest) {
     const db = client.db(process.env.MONGODB_DB_NAME);
     const collection = db.collection("crosschain_payments");
 
-    let query: any = {};
-    if (paymentId) {
-      query.paymentId = paymentId;
-    } else if (userAddress) {
-      query.$or = [
-        { "fromUser.walletAddress": userAddress },
-        { "toUser.walletAddress": userAddress }
-      ];
-    } else {
+    const query: any = paymentId 
+      ? { paymentId }
+      : userAddress 
+      ? { $or: [
+          { "fromUser.walletAddress": userAddress },
+          { "toUser.walletAddress": userAddress }
+        ]}
+      : {};
+
+    if (!paymentId && !userAddress) {
       await client.close();
       return NextResponse.json(
         { error: "Either paymentId or userAddress is required" },

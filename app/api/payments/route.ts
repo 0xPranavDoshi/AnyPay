@@ -11,11 +11,9 @@ async function getPaymentsForUser(userAddress: string): Promise<Payment[]> {
   const db = client.db(dbName);
   const collection = db.collection("payments");
 
-  // Find payments where user is either a sender or recipient (support both formats)
+  // Find payments where user is either a payer or ower
   const payments = await collection.find({
     $or: [
-      { "recipients.user.walletAddress": { $regex: new RegExp(userAddress, "i") } },
-      { "senders.user.walletAddress": { $regex: new RegExp(userAddress, "i") } },
       { "payer.walletAddress": { $regex: new RegExp(userAddress, "i") } },
       { "owers.user.walletAddress": { $regex: new RegExp(userAddress, "i") } }
     ]
@@ -86,10 +84,10 @@ export async function GET(req: NextRequest) {
         // Check if payment has been completed (has successful cross-chain transactions)
         const hasCompletedTransaction = payment.crossChainPayments && 
           payment.crossChainPayments.some((ccip: any) => 
-            ccip.status === "COMPLETED" && ccip.txHash
+            ccip.status === "completed" && ccip.txHash
           );
 
-        // Handle new payment format (payer/owers)
+        // Handle payment format (payer/owers)
         if ('payer' in payment && 'owers' in payment) {
           const owersArray = Array.isArray(payment.owers) ? payment.owers : [];
           
@@ -102,7 +100,7 @@ export async function GET(req: NextRequest) {
             // If payment is completed, add to paidPayments, otherwise to youOwe
             if (hasCompletedTransaction && payment.crossChainPayments) {
               const completedTx = payment.crossChainPayments.find((ccip: any) => 
-                ccip.status === "COMPLETED" && ccip.txHash
+                ccip.status === "completed" && ccip.txHash
               );
               
               if (completedTx) {
@@ -144,45 +142,6 @@ export async function GET(req: NextRequest) {
           }
         }
 
-        // Handle old payment format (recipients/senders) - backward compatibility
-        if ('recipients' in payment && 'senders' in payment) {
-          const recipientsArray = Array.isArray(payment.recipients) ? payment.recipients : [];
-          const sendersArray = Array.isArray(payment.senders) ? payment.senders : [];
-
-          // Check if user owes money (user is in senders array)
-          const userSends = sendersArray.find(sender => 
-            sender.user.walletAddress.toLowerCase() === userAddress.toLowerCase()
-          );
-          
-          if (userSends) {
-            recipientsArray.forEach(recipient => {
-              dashboardData.youOwe.push({
-                paymentId: payment._id,
-                user: recipient.user,
-                amount: recipient.amount,
-                description: payment.description || "Payment",
-                crossChainPayments: payment.crossChainPayments || []
-              });
-            });
-          }
-          
-          // Check if user is owed money (user is in recipients array)
-          const userReceives = recipientsArray.find(recipient => 
-            recipient.user.walletAddress.toLowerCase() === userAddress.toLowerCase()
-          );
-          
-          if (userReceives) {
-            sendersArray.forEach(sender => {
-              dashboardData.youOwe.push({
-                paymentId: payment._id,
-                user: sender.user,
-                amount: sender.amount,
-                description: payment.description || "Payment",
-                crossChainPayments: payment.crossChainPayments || []
-              });
-            });
-          }
-        }
       });
 
       return NextResponse.json(dashboardData);

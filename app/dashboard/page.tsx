@@ -65,8 +65,30 @@ export default function Dashboard() {
     txHash?: string;
     step: number;
     totalSteps: number;
+    sourceChain?: string;
+    tokenType?: number;
   }>({ isProcessing: false, status: "", step: 0, totalSteps: 4 });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Helper function to get explorer URL
+  const getExplorerUrl = (txHash: string, chainId: string, tokenType: number, messageId?: string, sourceChain?: string, destinationChain?: string) => {
+    // Get the chain explorer URL first
+    const baseUrl = chainId === "84532" 
+      ? "https://sepolia.basescan.org/tx/" 
+      : chainId === "421614" 
+      ? "https://sepolia.arbiscan.io/tx/" 
+      : "https://sepolia.etherscan.io/tx/";
+    
+    // For CCIP tokens going cross-chain, use CCIP explorer if we have messageId
+    if ((tokenType === 1 || tokenType === 2) && sourceChain !== destinationChain) {
+      if (messageId && messageId !== "pending" && messageId !== "direct-transfer") {
+        return `https://ccip.chain.link/msg/${messageId}`;
+      }
+    }
+    
+    // For everything else (USDC transfers, same-chain CCIP, or pending CCIP), use chain explorer
+    return `${baseUrl}${txHash}`;
+  };
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Payment data state
@@ -264,93 +286,170 @@ export default function Dashboard() {
         await approveTx.wait();
       }
 
-      // Step 3: Execute cross-chain payment
-      setTransactionState((prev) => ({
-        ...prev,
-        status: "🚀 Executing cross-chain payment...",
-        step: 4,
-      }));
+      // Step 3: Execute payment (cross-chain or direct transfer)
+      // Use the isSameChain flag from API response for consistency
+      // Only USDC same-chain transfers should be treated as direct transfers
+      const isSameChain = transactionParams.isSameChain && paymentData.tokenType === 0;
+      
+      let tx;
+      
+      if (isSameChain) {
+        // Same-chain USDC transfer - use direct ERC20 transfer
+        setTransactionState((prev) => ({
+          ...prev,
+          status: "💸 Executing direct USDC transfer...",
+          step: 4,
+        }));
 
-      const paymentContract = new ethers.Contract(
-        transactionParams.contractAddress,
-        [
-          "function payRecipient(address,uint64,address,uint256,uint8,string) payable returns (bytes32)",
-        ],
-        signer
-      );
+        const usdcContract = new ethers.Contract(
+          transactionParams.tokenAddress,
+          [
+            "function transfer(address to, uint256 amount) returns (bool)",
+          ],
+          signer
+        );
 
-      // Calculate CCIP fees
-      let ccipFees;
-      try {
-        ccipFees = await paymentContract.callStatic.payRecipient(
+        tx = await usdcContract.transfer(
+          transactionParams.recipientAddress,
+          transactionParams.amountWei,
+          {
+            gasLimit: 100000, // Much lower gas for simple transfer
+          }
+        );
+        
+        console.log("Direct USDC transfer sent:", tx.hash);
+      } else {
+        // Cross-chain payment - use CCIP contract
+        setTransactionState((prev) => ({
+          ...prev,
+          status: "🚀 Executing cross-chain payment...",
+          step: 4,
+        }));
+
+        const paymentContract = new ethers.Contract(
+          transactionParams.contractAddress,
+          [
+            "function payRecipient(address,uint64,address,uint256,uint8,string) payable returns (bytes32)",
+          ],
+          signer
+        );
+
+        // Calculate CCIP fees
+        let ccipFees;
+        try {
+          ccipFees = await paymentContract.callStatic.payRecipient(
+            transactionParams.recipientAddress,
+            transactionParams.destinationChainSelector,
+            transactionParams.tokenAddress,
+            transactionParams.amountWei,
+            transactionParams.tokenType,
+            paymentId
+          );
+        } catch (error) {
+          console.log("Fee estimation failed, using fallback:", error);
+          ccipFees = ethers.utils.parseEther("0.003"); // Much lower fallback fee for testing
+        }
+
+        tx = await paymentContract.payRecipient(
           transactionParams.recipientAddress,
           transactionParams.destinationChainSelector,
           transactionParams.tokenAddress,
           transactionParams.amountWei,
           transactionParams.tokenType,
-          paymentId
+          paymentId,
+          {
+            gasLimit: 500000, // Reduced gas limit
+            value: ccipFees.add(ethers.utils.parseEther("0.001")), // Much smaller buffer - total ~0.004 ETH
+          }
         );
-      } catch (error) {
-        console.log("Fee estimation failed, using fallback:", error);
-        ccipFees = ethers.utils.parseEther("0.003"); // Much lower fallback fee for testing
+        
+        console.log("Cross-chain transaction sent:", tx.hash);
       }
-
-      const tx = await paymentContract.payRecipient(
-        transactionParams.recipientAddress,
-        transactionParams.destinationChainSelector,
-        transactionParams.tokenAddress,
-        transactionParams.amountWei,
-        transactionParams.tokenType,
-        paymentId,
-        {
-          gasLimit: 500000, // Reduced gas limit
-          value: ccipFees.add(ethers.utils.parseEther("0.001")), // Much smaller buffer - total ~0.004 ETH
-        }
-      );
 
       console.log("Transaction sent:", tx.hash);
 
-      // Submit transaction hash for tracking
-      const submitResult = await fetch("/api/submit-payment", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          paymentId,
-          txHash: tx.hash,
-          sourceChain: paymentData.sourceChain,
-          destinationChain: paymentData.destinationChain,
-          tokenType: paymentData.tokenType
-        })
-      });
-
-      const submitData = await submitResult.json();
-      if (submitResult.ok && submitData.success) {
+      if (isSameChain) {
+        // For same-chain USDC transfers, show transaction immediately
+        const explorerUrl = getExplorerUrl(tx.hash, paymentData.sourceChain, paymentData.tokenType);
+        
         setTransactionState({
           isProcessing: false,
-          status: "✅ Payment completed successfully!",
+          status: "✅ USDC Transfer Sent!",
           step: 4,
           totalSteps: 4,
           txHash: tx.hash,
+          sourceChain: paymentData.sourceChain,
+          tokenType: paymentData.tokenType,
         });
 
+        // Record the payment for same-chain transfers and refresh
+        fetch("/api/record-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentId,
+            txHash: tx.hash,
+            sourceChain: paymentData.sourceChain,
+            recipientAddress: transactionParams.recipientAddress,
+            amount: paymentModal.amount,
+            tokenType: paymentData.tokenType,
+            payer: user
+          })
+        }).then(() => {
+          // Refresh payments immediately to show in paid section
+          if (user) {
+            fetchUserPayments(user.walletAddress);
+          }
+        }).catch(error => {
+          console.log("Background payment recording failed:", error);
+        });
+
+        // Close modal
         setTimeout(() => {
           setPaymentModal({ isOpen: false });
-          setTransactionState({
-            isProcessing: false,
-            status: "",
-            step: 0,
-            totalSteps: 4,
-          });
-        }, 3000);
-
-        // Refresh payments
-        if (user) {
-          fetchUserPayments(user.walletAddress);
-        }
+        }, 1000);
       } else {
-        throw new Error(
-          submitData.error || submitData.details || "Failed to submit payment"
-        );
+        // For cross-chain payments, show transaction immediately and submit to API
+        const explorerUrl = getExplorerUrl(tx.hash, paymentData.sourceChain, paymentData.tokenType);
+        
+        setTransactionState({
+          isProcessing: false,
+          status: "✅ Cross-chain Payment Sent!",
+          step: 4,
+          totalSteps: 4,
+          txHash: tx.hash,
+          sourceChain: paymentData.sourceChain,
+          tokenType: paymentData.tokenType,
+        });
+
+        // Submit to API and refresh payments
+        fetch("/api/submit-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentId,
+            txHash: tx.hash,
+            sourceChain: paymentData.sourceChain,
+            destinationChain: paymentData.destinationChain,
+            tokenType: paymentData.tokenType,
+            // Add payment details for record creation
+            payer: user,
+            recipientAddress: transactionParams.recipientAddress,
+            amount: paymentModal.amount
+          })
+        }).then(() => {
+          // Refresh payments immediately to show in paid section
+          if (user) {
+            fetchUserPayments(user.walletAddress);
+          }
+        }).catch(error => {
+          console.log("Background API call failed:", error);
+        });
+
+        // Close modal
+        setTimeout(() => {
+          setPaymentModal({ isOpen: false });
+        }, 2000);
       }
     } catch (error) {
       console.error("Payment error:", error);
@@ -878,21 +977,26 @@ export default function Dashboard() {
 
                           {/* Transaction Details */}
                           <div className="p-3 bg-blue-900/10 rounded-lg border border-blue-500/20">
-                            <div className="flex justify-between items-center mb-2">
-                              <span className="text-sm text-blue-600 font-medium">Transaction Hash:</span>
-                              {item.txHash && (
+                            {item.txHash && (
+                              <div className="mb-3">
+                                <span className="text-sm text-blue-600 font-medium block mb-1">Transaction Hash:</span>
                                 <a
-                                  href={`${
-                                    CHAINS[item.sourceChain as keyof typeof CHAINS]?.explorerUrl || "#"
-                                  }${item.txHash}`}
+                                  href={getExplorerUrl(
+                                    item.txHash, 
+                                    item.sourceChain, 
+                                    item.tokenType || 0,
+                                    item.messageId,
+                                    item.sourceChain,
+                                    item.destinationChain
+                                  )}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  className="text-blue-500 hover:text-blue-300 text-sm underline"
+                                  className="text-blue-500 hover:text-blue-300 text-sm font-mono underline break-all"
                                 >
-                                  View Transaction →
+                                  {item.txHash}
                                 </a>
-                              )}
-                            </div>
+                              </div>
+                            )}
                             
                             <div className="grid grid-cols-2 gap-4 text-xs text-[var(--color-text-muted)]">
                               <div>
@@ -1634,22 +1738,39 @@ export default function Dashboard() {
         txHash={transactionState.txHash}
       />
 
-      {/* Transaction Status Outside Modal */}
-      {transactionState.status && !transactionState.isProcessing && (
-        <div className="fixed bottom-4 right-4 z-50 bg-gray-800 border border-gray-600 rounded-lg p-4 max-w-sm">
-          <p className="text-sm text-white">{transactionState.status}</p>
-          {transactionState.txHash && (
-            <a
-              href={`https://ccip.chain.link/`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-400 hover:text-blue-300 text-xs underline block mt-1"
+      {/* Simple Transaction Success Notification */}
+      {transactionState.status && !transactionState.isProcessing && transactionState.txHash && (
+        <div className="fixed top-4 right-4 z-50 bg-green-600 border border-green-500 rounded-lg p-4 max-w-md shadow-lg">
+          <div className="flex justify-between items-start mb-2">
+            <div>
+              <p className="text-sm text-white font-medium">✅ {transactionState.status}</p>
+              <p className="text-xs text-green-100 mt-1">Transaction Hash:</p>
+              <a
+                href={getExplorerUrl(
+                  transactionState.txHash, 
+                  transactionState.sourceChain || "84532", 
+                  transactionState.tokenType || 0,
+                  undefined,
+                  transactionState.sourceChain,
+                  transactionState.sourceChain // This will be updated when we have destination chain
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-green-100 hover:text-white text-xs font-mono underline break-all"
+              >
+                {transactionState.txHash}
+              </a>
+            </div>
+            <button 
+              onClick={() => setTransactionState(prev => ({ ...prev, status: "", txHash: undefined }))}
+              className="text-green-200 hover:text-white ml-2 text-sm"
             >
-              🔗 Track CCIP Transaction
-            </a>
-          )}
+              ✕
+            </button>
+          </div>
         </div>
       )}
+
     </div>
   );
 }

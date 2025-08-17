@@ -10,78 +10,123 @@ const RPC_URLS = {
   "84532": "https://sepolia.base.org"
 };
 
-async function updatePaymentWithCrossChain(paymentId: string, crossChainData: any, tokenType?: number, sourceChain?: string, destinationChain?: string): Promise<void> {
+interface UpdateOptions {
+  tokenType?: number;
+  sourceChain?: string;
+  destinationChain?: string;
+  payer?: any;
+  recipientAddress?: string;
+  amount?: number;
+}
+
+async function updatePaymentWithCrossChain(paymentId: string, crossChainData: any, options: UpdateOptions = {}): Promise<void> {
   if (!process.env.MONGODB_URI || !process.env.MONGODB_DB_NAME) {
     throw new Error("MongoDB configuration missing");
   }
 
-  const client = new MongoClient(process.env.MONGODB_URI);
-  await client.connect();
-  const db = client.db(process.env.MONGODB_DB_NAME);
-  const collection = db.collection("payments");
+  const { tokenType, sourceChain, destinationChain, payer, recipientAddress, amount } = options;
 
-  // Add cross-chain payment data to the payments collection
-  // Try both string ID and ObjectId format for MongoDB compatibility
-  let query: any;
+  const client = new MongoClient(process.env.MONGODB_URI, {
+    serverSelectionTimeoutMS: 5000, // 5 second timeout
+    connectTimeoutMS: 10000, // 10 second timeout
+    socketTimeoutMS: 45000, // 45 second timeout
+    maxPoolSize: 10,
+    retryWrites: true,
+    w: 'majority'
+  });
+
   try {
-    // Try as ObjectId first (for MongoDB _id fields)
-    const { ObjectId } = require('mongodb');
-    query = { _id: new ObjectId(paymentId) };
-  } catch (error) {
-    // If ObjectId fails, try as string
-    query = { _id: paymentId };
-  }
-  
-  const result = await collection.updateOne(
-    query,
-    { 
-      $push: { crossChainPayments: crossChainData },
-      $set: { updatedAt: new Date() }
+    await client.connect();
+    const db = client.db(process.env.MONGODB_DB_NAME);
+    const collection = db.collection("payments");
+
+    // Add cross-chain payment data to the payments collection
+    // Try both string ID and ObjectId format for MongoDB compatibility
+    let query: any;
+    try {
+      // Try as ObjectId first (for MongoDB _id fields)
+      const { ObjectId } = require('mongodb');
+      query = { _id: new ObjectId(paymentId) };
+    } catch (error) {
+      // If ObjectId fails, try as string
+      query = { _id: paymentId };
     }
-  );
-  
-  console.log("Update result:", { paymentId, matchedCount: result.matchedCount, modifiedCount: result.modifiedCount });
-  
-  if (result.matchedCount === 0) {
-    console.log("No payment found with ID:", paymentId, "- this might be a new payment flow");
     
-    // For same-chain transactions, create a simple payment record since /api/pay might not have been called
-    if (tokenType === 0 && sourceChain === destinationChain) {
-      console.log("Creating new payment record for same-chain USDC transaction");
-      const simplePayment: any = {
-        _id: paymentId,
-        paymentType: "direct-transfer",
-        status: PaymentStatus.COMPLETED,
-        crossChainPayments: [crossChainData],
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
+    const result = await collection.updateOne(
+      query,
+      { 
+        $push: { crossChainPayments: crossChainData },
+        $set: { updatedAt: new Date() }
+      }
+    );
+    
+    console.log("Update result:", { paymentId, matchedCount: result.matchedCount, modifiedCount: result.modifiedCount });
+    
+    if (result.matchedCount === 0) {
+      console.log("No payment found with ID:", paymentId, "- creating new payment record");
       
-      try {
-        await collection.insertOne(simplePayment);
-        console.log("Successfully created new same-chain payment record:", paymentId);
-      } catch (insertError) {
-        console.log("Failed to create payment record:", insertError);
-        // Try to update with upsert instead
+      // Create payment record for both same-chain and cross-chain transactions
+      let paymentRecord: any;
+      
+      if (tokenType === 0 && sourceChain === destinationChain) {
+        // Same-chain USDC transaction
+        console.log("Creating new payment record for same-chain USDC transaction");
+        paymentRecord = {
+          _id: paymentId,
+          paymentType: "direct-transfer",
+          status: PaymentStatus.COMPLETED,
+          crossChainPayments: [crossChainData],
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+      } else if (payer && recipientAddress && amount) {
+        // Cross-chain CCIP transaction
+        console.log("Creating new payment record for cross-chain CCIP transaction");
+        paymentRecord = {
+          _id: paymentId,
+          payer: payer,
+          owers: [{
+            user: { walletAddress: recipientAddress },
+            amount: amount
+          }],
+          totalAmount: amount,
+          description: `Cross-chain payment via CCIP`,
+          crossChainPayments: [crossChainData],
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+      }
+        
+      if (paymentRecord) {
         try {
-          await collection.updateOne(
-            { _id: paymentId },
-            { 
-              $setOnInsert: simplePayment,
-              $push: { crossChainPayments: crossChainData },
-              $set: { updatedAt: new Date() }
-            },
-            { upsert: true }
-          );
-          console.log("Successfully upserted payment record:", paymentId);
-        } catch (upsertError) {
-          console.log("Upsert also failed:", upsertError);
+          await collection.insertOne(paymentRecord);
+          console.log("Successfully created new payment record:", paymentId);
+        } catch (insertError) {
+          console.log("Failed to create payment record:", insertError);
+          // Try to update with upsert instead
+          try {
+            await collection.updateOne(
+              query, // Use the same query object
+              { 
+                $setOnInsert: paymentRecord,
+                $push: { crossChainPayments: crossChainData },
+                $set: { updatedAt: new Date() }
+              },
+              { upsert: true }
+            );
+            console.log("Successfully upserted payment record:", paymentId);
+          } catch (upsertError) {
+            console.log("Upsert also failed:", upsertError);
+          }
         }
       }
     }
+  } catch (error) {
+    console.error("MongoDB operation failed:", error);
+    throw error;
+  } finally {
+    await client.close();
   }
-  
-  await client.close();
 }
 
 export async function POST(req: NextRequest) {
@@ -94,6 +139,9 @@ export async function POST(req: NextRequest) {
     sourceChain = body.sourceChain;
     const tokenType = body.tokenType || 0; // Default to USDC
     const destinationChain = body.destinationChain;
+    const payer = body.payer;
+    const recipientAddress = body.recipientAddress;
+    const amount = body.amount;
 
     // Validate required fields
     if (!paymentId || !txHash || !sourceChain) {
@@ -146,7 +194,7 @@ export async function POST(req: NextRequest) {
         txHash: txHash,
         sourceChain,
         destinationChain: destinationChain || "84532", // Base Sepolia
-        status: PaymentStatus.COMPLETED,
+        status: PaymentStatus.COMPLETED, // Mark as completed immediately so it moves to "Paid"
         blockNumber: "pending",
         gasUsed: "pending",
         timestamp: new Date(),
@@ -158,7 +206,14 @@ export async function POST(req: NextRequest) {
     console.log("Saving cross-chain data:", crossChainData);
 
     // Update the payment with cross-chain data
-    await updatePaymentWithCrossChain(paymentId, crossChainData, tokenType, sourceChain, destinationChain);
+    await updatePaymentWithCrossChain(paymentId, crossChainData, {
+      tokenType,
+      sourceChain,
+      destinationChain,
+      payer,
+      recipientAddress,
+      amount
+    });
 
     return NextResponse.json({
       success: true,

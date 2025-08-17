@@ -64,8 +64,27 @@ export default function PaymentModal({ isOpen, onClose, recipientUser, amount, o
   const [balanceInfo, setBalanceInfo] = useState<any>(null);
   const [onrampUrl, setOnrampUrl] = useState<string>("");
   
-  // Fixed destination to Base Sepolia for fastest USDC delivery
-  const destinationChain = "84532";
+  // Dynamic destination based on token type
+  const getDestinationChain = (sourceChain: string, tokenType: TokenType | "") => {
+    // For USDC, keep same chain for direct transfer
+    if (tokenType === TokenType.USDC) {
+      return sourceChain;
+    }
+    
+    // For CCIP tokens, use cross-chain transfer (avoid same-chain CCIP)
+    if (sourceChain === "84532") {
+      // From Base Sepolia, go to Arbitrum Sepolia
+      return "421614";
+    } else if (sourceChain === "421614") {
+      // From Arbitrum Sepolia, go to Base Sepolia  
+      return "84532";
+    } else {
+      // From Ethereum Sepolia, go to Base Sepolia
+      return "84532";
+    }
+  };
+  
+  const destinationChain = getDestinationChain(sourceChain, tokenType);
 
   if (!isOpen) return null;
 
@@ -352,13 +371,28 @@ export default function PaymentModal({ isOpen, onClose, recipientUser, amount, o
               <div className="text-sm text-[var(--color-text-primary)]">
                 • Send {TOKEN_NAMES[tokenType as TokenType]} from {CHAINS[sourceChain as keyof typeof CHAINS].name}
               </div>
-              <div className="text-sm text-[var(--color-text-primary)]">
-                • Recipient receives USDC on Base Sepolia
-              </div>
-              
-              <div className="text-sm text-[var(--color-text-primary)]">
-                • Cross-chain conversion via Chainlink CCIP
-              </div>
+              {tokenType === TokenType.USDC && sourceChain === destinationChain ? (
+                <>
+                  <div className="text-sm text-[var(--color-text-primary)]">
+                    • Recipient receives USDC on {CHAINS[sourceChain as keyof typeof CHAINS].name}
+                  </div>
+                  <div className="text-sm text-[var(--color-text-primary)]">
+                    • Direct ERC20 transfer (faster & cheaper)
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-sm text-[var(--color-text-primary)]">
+                    • Recipient receives USDC on {CHAINS[destinationChain as keyof typeof CHAINS]?.name || "Base Sepolia"}
+                  </div>
+                  <div className="text-sm text-[var(--color-text-primary)]">
+                    • Cross-chain conversion via Chainlink CCIP
+                  </div>
+                  <div className="text-xs text-[var(--color-text-muted)] mt-1">
+                    {TOKEN_NAMES[tokenType as TokenType]} on {CHAINS[sourceChain as keyof typeof CHAINS]?.name} → USDC on {CHAINS[destinationChain as keyof typeof CHAINS]?.name}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
